@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Railing/Railing.vcxproj" Id="ce6359e4-777c-46da-af43-a021256b9fad" />
+</Solution>

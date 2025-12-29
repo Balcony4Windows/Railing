@@ -1,0 +1,26 @@
+# --- Visual Studio Junk ---
+.vs/
+Debug/
+Release/
+x64/
+x86/
+*.user
+*.aps
+*.idb
+*.pdb
+*.obj
+*.tlog
+*.log
+*.ipch
+
+# --- Project Specific Ignored Folders ---
+# Ignore the build output folder inside the project
+Railing/x64/
+Railing/Debug/
+Railing/Release/
+
+# --- Windows Junk ---
+Thumbs.db
+Desktop.ini
+
+# Note: We KEEP .slnx, .vcxproj, .filters, .rc, and .h/.cpp files.

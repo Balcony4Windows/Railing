@@ -1,0 +1,123 @@
+{
+  "global": {
+    "height": 44,
+    "position": "top",
+    "monitor": "primary",
+    "margin": [8, 12, 0, 12],
+    "font": "Segoe UI Variable Display",
+    "font_size": 11,
+    "background": "#CC1a1b26",
+    "blur": true,
+    "radius": 16,
+    "border_width": 1,
+    "border_color": "#33c0caf5"
+  },
+  "layout": {
+    "left": ["app_icon", "workspaces"],
+    "center": ["clock"],
+    "right": ["cpu", "ram", "group_hardware", "notification"]
+  },
+  "app_icon": {
+    "type": "app_icon",
+    "style": { 
+      "padding": [0, 8], 
+      "margin": [4, 4, 4, 12] 
+    }
+  },
+  "workspaces": {
+    "type": "workspaces",
+    "style": {
+      "bg": "#101014",
+      "radius": 12,
+      "padding": [4, 4],
+      "margin": [6, 0, 6, 0]
+    },
+    "item_style": { 
+      "fg": "#565f89", 
+      "padding": [0, 10],
+      "radius": 8
+    },
+    "states": {
+      "active": { "fg": "#1a1b26", "bg": "#7aa2f7" },
+      "hover": { "fg": "#c0caf5", "bg": "#292e42" }
+    }
+  },
+  "clock": {
+    "type": "clock",
+    "format": "{:%H:%M  |  %a, %b %d}",
+    "style": { 
+      "bg": "transparent", 
+      "fg": "#c0caf5", 
+      "font_weight": "bold",
+      "font_size": 12,
+      "padding": [0, 0]
+    }
+  },
+  "cpu": { 
+    "type": "cpu",
+    "format": "CPU {usage}%",
+    "interval": 2000,
+    "style": { 
+      "bg": "#24283b", 
+      "fg": "#f7768e", 
+      "radius": 12, 
+      "padding": [0, 12], 
+      "margin": [6, 4, 6, 4],
+      "border_width": 1,
+      "border_color": "#20f7768e"
+    },
+    "thresholds": [ { "val": 80, "style": { "fg": "#ff9e64", "bg": "#302020" } } ]
+  },
+  "ram": {
+    "type": "ram",
+    "format": "MEM {usage}%",
+    "style": { 
+      "bg": "#24283b", 
+      "fg": "#9ece6a", 
+      "radius": 12, 
+      "padding": [0, 12], 
+      "margin": [6, 12, 6, 4],
+      "border_width": 1,
+      "border_color": "#209ece6a"
+    }
+  },
+  "group_hardware": {
+    "type": "group",
+    "orientation": "horizontal",
+    "modules": ["network", "volume", "battery", "tray"],
+    "style": { 
+      "bg": "#16161e", 
+      "radius": 12, 
+      "padding": [0, 6], 
+      "margin": [6, 0, 6, 0],
+      "border_width": 1,
+      "border_color": "#303030"
+    }
+  },
+  "network": { 
+    "type": "network", 
+    "style": { "fg": "#7dcfff", "padding": [0, 10] } 
+  },
+  "volume": { 
+    "type": "audio", 
+    "style": { "fg": "#bb9af7", "padding": [0, 10] } 
+  },
+  "battery": { 
+    "type": "battery", 
+    "style": { "fg": "#e0af68", "padding": [0, 10] } 
+  },
+  "tray": { 
+    "type": "tray", 
+    "style": { "fg": "#a9b1d6", "padding": [0, 8] } 
+  },
+  "notification": { 
+    "type": "notification", 
+    "style": { 
+      "bg": "#7aa2f7", 
+      "fg": "#1a1b26", 
+      "radius": 12, 
+      "padding": [0, 12], 
+      "margin": [6, 4, 6, 4] 
+    } 
+  }
+}

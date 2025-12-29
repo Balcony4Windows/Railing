@@ -1,0 +1,43 @@
+#pragma once
+
+#define NOMINMAX
+
+#include <windows.h>
+#include <string>
+
+struct WindowInfo
+{
+	HWND hwnd;
+	std::wstring title;
+	RECT rect;
+};
+
+typedef enum _WINDOWCOMPOSITIONATTRIB
+{
+	WCA_ACCENT_POLICY = 19
+} WINDOWCOMPOSITIONATTRIB;
+
+typedef enum _ACCENT_STATE
+{
+	ACCENT_DISABLED = 0,
+	ACCENT_ENABLE_GRADIENT = 1,
+	ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+	ACCENT_ENABLE_BLURBEHIND = 3,
+	ACCENT_ENABLE_ACRYLICBLURBEHIND = 4, // This is the "Frosted Glass"
+	ACCENT_ENABLE_HOSTBACKDROP = 5,
+} ACCENT_STATE;
+
+typedef struct _ACCENT_POLICY
+{
+	ACCENT_STATE nAccentState;
+	DWORD dwFlags;
+	DWORD nColor; // Critical for Acrylic: 0xAABBGGRR
+	DWORD nAnimationId;
+} ACCENT_POLICY;
+
+typedef struct _WINDOWCOMPOSITIONATTRIBDATA
+{
+	WINDOWCOMPOSITIONATTRIB nAttribute;
+	PVOID pData;
+	ULONG ulDataSize;
+} WINDOWCOMPOSITIONATTRIBDATA;
