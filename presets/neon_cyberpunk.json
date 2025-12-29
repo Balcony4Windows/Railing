@@ -1,0 +1,66 @@
+{
+  "global": {
+    "height": 46,
+    "position": "top",
+    "monitor": "primary",
+    "margin": [8, 12, 0, 12],
+    "font": "Segoe UI Variable Display",
+    "font_size": 11,
+    "font_weight": "bold",
+    "background": "#0a0a12e6",
+    "blur": true,
+    "radius": 4,
+    "border_width": 2,
+    "border_color": "#00f0ff"
+  },
+  "layout": {
+    "left": ["app_icon", "workspaces"],
+    "center": ["clock"],
+    "right": ["cpu", "gpu", "ram", "group_hardware"]
+  },
+  "app_icon": { "type": "app_icon", "style": { "padding": [0, 8] } },
+  "workspaces": {
+    "type": "workspaces",
+    "style": {
+      "bg": "#00f0ff10", "radius": 0, "padding": [4, 4], "margin": [10, 0, 10, 0],
+      "border_width": 1, "border_color": "#00f0ff40"
+    },
+    "item_style": { "fg": "#00f0ff", "padding": [0, 12], "radius": 0 },
+    "states": {
+      "active": { "fg": "#000000", "bg": "#00f0ff" },
+      "hover": { "bg": "#00f0ff40" }
+    }
+  },
+  "clock": {
+    "type": "clock", "format": "{:%H:%M:%S}",
+    "style": { "fg": "#ff0099", "font_weight": "bold", "font_size": 16, "padding": [0, 20] }
+  },
+  "cpu": {
+    "type": "cpu", "format": "CPU {usage}%", "interval": 1000,
+    "style": {
+      "bg": "#2d004d", "fg": "#d500f9", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
+      "border_width": 1, "border_color": "#d500f9"
+    }
+  },
+  "gpu": {
+    "type": "gpu", "format": "GPU {temp}\u00B0C", "interval": 2000,
+    "style": {
+      "bg": "#330000", "fg": "#ff3d00", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
+      "border_width": 1, "border_color": "#ff3d00"
+    }
+  },
+  "ram": {
+    "type": "ram", "format": "MEM {usage}%",
+    "style": {
+      "bg": "#001a4d", "fg": "#00e5ff", "radius": 0, "padding": [0, 12], "margin": [10, 12, 10, 4],
+      "border_width": 1, "border_color": "#00e5ff"
+    }
+  },
+  "group_hardware": {
+    "type": "group", "orientation": "horizontal", "modules": ["network", "volume", "battery"],
+    "style": { "bg": "#00000080", "radius": 0, "padding": [0, 8], "margin": [10, 0, 10, 0], "border_width": 1, "border_color": "#ffffff20" }
+  },
+  "network": { "type": "network", "style": { "fg": "#ffffff", "padding": [0, 8] } },
+  "volume": { "type": "audio", "style": { "fg": "#ffffff", "padding": [0, 8] } },
+  "battery": { "type": "battery", "style": { "fg": "#ffffff", "padding": [0, 8] } }
+}

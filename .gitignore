@@ -12,15 +12,15 @@ x86/
 *.tlog
 *.log
 *.ipch
+*.slnx
 
 # --- Project Specific Ignored Folders ---
 # Ignore the build output folder inside the project
 Railing/x64/
 Railing/Debug/
 Railing/Release/
+Railing/External/
 
 # --- Windows Junk ---
 Thumbs.db
 Desktop.ini
-
-# Note: We KEEP .slnx, .vcxproj, .filters, .rc, and .h/.cpp files.
