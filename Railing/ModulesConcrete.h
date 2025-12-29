@@ -70,17 +70,21 @@ public:
 private:
 	std::wstring GetTimeStr()
 	{
-		time_t now = time(0); struct tm tstruct;
+		time_t now = time(0);
+		struct tm tstruct;
 		localtime_s(&tstruct, &now);
-		wchar_t buf[80];
+		wchar_t buf[128];
 		std::string fmt = config.format.empty() ? "%H:%M" : config.format;
-		if (fmt.front() == '{') fmt = fmt.substr(1, fmt.size() - 2);
-		if (fmt.find(":%") != std::string::npos) {
-			size_t pos = fmt.find(":"); // Waybar uses {:%H:%M...}, we strip the first colon if needed
-			fmt = fmt.substr(pos + 1);
+
+		if (fmt.front() == '{' && fmt.back() == '}') {
+			fmt = fmt.substr(1, fmt.size() - 2);
 		}
+		if (fmt.find(":%") == 0) {
+			fmt = fmt.substr(1);
+		}
+
 		std::wstring wfmt(fmt.begin(), fmt.end());
-		wcsftime(buf, sizeof(buf), wfmt.c_str(), &tstruct);
+		wcsftime(buf, 128, wfmt.c_str(), &tstruct);
 		return buf;
 	}
 };

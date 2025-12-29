@@ -7,11 +7,11 @@
     "font": "Segoe UI Variable Display",
     "font_size": 11,
     "font_weight": "bold",
-    "background": "#0a0a12e6",
+    "background": "#e60a0a12",
     "blur": true,
     "radius": 4,
     "border_width": 2,
-    "border_color": "#00f0ff"
+    "border_color": "#ff00f0ff"
   },
   "layout": {
     "left": ["app_icon", "workspaces"],
@@ -22,45 +22,45 @@
   "workspaces": {
     "type": "workspaces",
     "style": {
-      "bg": "#00f0ff10", "radius": 0, "padding": [4, 4], "margin": [10, 0, 10, 0],
-      "border_width": 1, "border_color": "#00f0ff40"
+      "bg": "#1000f0ff", "radius": 0, "padding": [4, 4], "margin": [10, 0, 10, 0],
+      "border_width": 1, "border_color": "#4000f0ff"
     },
-    "item_style": { "fg": "#00f0ff", "padding": [0, 12], "radius": 0 },
+    "item_style": { "fg": "#ff00f0ff", "padding": [0, 12], "radius": 0 },
     "states": {
-      "active": { "fg": "#000000", "bg": "#00f0ff" },
-      "hover": { "bg": "#00f0ff40" }
+      "active": { "fg": "#ff000000", "bg": "#ff00f0ff" },
+      "hover": { "bg": "#4000f0ff" }
     }
   },
   "clock": {
     "type": "clock", "format": "{:%H:%M:%S}",
-    "style": { "fg": "#ff0099", "font_weight": "bold", "font_size": 16, "padding": [0, 20] }
+    "style": { "fg": "#ffff0099", "font_weight": "bold", "font_size": 16, "padding": [0, 20] }
   },
   "cpu": {
     "type": "cpu", "format": "CPU {usage}%", "interval": 1000,
     "style": {
-      "bg": "#2d004d", "fg": "#d500f9", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
-      "border_width": 1, "border_color": "#d500f9"
+      "bg": "#ff2d004d", "fg": "#ffd500f9", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
+      "border_width": 1, "border_color": "#ffd500f9"
     }
   },
   "gpu": {
     "type": "gpu", "format": "GPU {temp}\u00B0C", "interval": 2000,
     "style": {
-      "bg": "#330000", "fg": "#ff3d00", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
-      "border_width": 1, "border_color": "#ff3d00"
+      "bg": "#ff330000", "fg": "#ffff3d00", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
+      "border_width": 1, "border_color": "#ffff3d00"
     }
   },
   "ram": {
     "type": "ram", "format": "MEM {usage}%",
     "style": {
-      "bg": "#001a4d", "fg": "#00e5ff", "radius": 0, "padding": [0, 12], "margin": [10, 12, 10, 4],
-      "border_width": 1, "border_color": "#00e5ff"
+      "bg": "#ff001a4d", "fg": "#ff00e5ff", "radius": 0, "padding": [0, 12], "margin": [10, 12, 10, 4],
+      "border_width": 1, "border_color": "#ff00e5ff"
     }
   },
   "group_hardware": {
     "type": "group", "orientation": "horizontal", "modules": ["network", "volume", "battery"],
-    "style": { "bg": "#00000080", "radius": 0, "padding": [0, 8], "margin": [10, 0, 10, 0], "border_width": 1, "border_color": "#ffffff20" }
+    "style": { "bg": "#80000000", "radius": 0, "padding": [0, 8], "margin": [10, 0, 10, 0], "border_width": 1, "border_color": "#20ffffff" }
   },
-  "network": { "type": "network", "style": { "fg": "#ffffff", "padding": [0, 8] } },
-  "volume": { "type": "audio", "style": { "fg": "#ffffff", "padding": [0, 8] } },
-  "battery": { "type": "battery", "style": { "fg": "#ffffff", "padding": [0, 8] } }
+  "network": { "type": "network", "style": { "fg": "#ffffffff", "padding": [0, 8] } },
+  "volume": { "type": "audio", "style": { "fg": "#ffffffff", "padding": [0, 8] } },
+  "battery": { "type": "battery", "style": { "fg": "#ffffffff", "padding": [0, 8] } }
 }

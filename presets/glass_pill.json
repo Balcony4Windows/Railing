@@ -7,11 +7,11 @@
     "font": "Segoe UI Variable Display",
     "font_size": 11,
     "font_weight": "normal",
-    "background": "#f0f0f080",
+    "background": "#80f0f0f0",
     "blur": true,
     "radius": 24,
     "border_width": 1,
-    "border_color": "#ffffff40"
+    "border_color": "#40ffffff"
   },
   "layout": {
     "left": ["workspaces"],
@@ -20,38 +20,38 @@
   },
   "workspaces": {
     "type": "workspaces",
-    "style": { "bg": "#ffffff60", "radius": 20, "padding": [4, 4], "margin": [8, 0, 8, 8] },
+    "style": { "bg": "#60ffffff", "radius": 20, "padding": [4, 4], "margin": [8, 0, 8, 8] },
     "item_style": { "fg": "#000000", "padding": [0, 12], "radius": 20 },
     "states": {
-      "active": { "fg": "#ffffff", "bg": "#000000" },
-      "hover": { "bg": "#00000010" }
+      "active": { "fg": "#ffffff", "bg": "#ff000000" },
+      "hover": { "bg": "#10000000" }
     }
   },
   "clock": {
     "type": "clock", "format": "{:%I:%M %p}",
-    "style": { "fg": "#000000", "font_weight": "semibold", "font_size": 14, "padding": [0, 20] }
+    "style": { "fg": "#ff000000", "font_weight": "semibold", "font_size": 14, "padding": [0, 20] }
   },
   "group_stats": {
     "type": "group", "modules": ["cpu", "gpu", "ram"],
-    "style": { "bg": "#ffffff60", "radius": 20, "padding": [0, 4], "margin": [8, 4, 8, 4] }
+    "style": { "bg": "#60ffffff", "radius": 20, "padding": [0, 4], "margin": [8, 4, 8, 4] }
   },
   "cpu": {
     "type": "cpu", "format": "CPU {usage}%", "interval": 1000,
-    "style": { "fg": "#000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
+    "style": { "fg": "#ff000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
   },
   "gpu": {
     "type": "gpu", "format": "GPU {temp}\u00B0", "interval": 2000,
-    "style": { "fg": "#000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
+    "style": { "fg": "#ff000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
   },
   "ram": {
-    "type": "ram", "format": "RAM {usage}%", "style": { "fg": "#000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
+    "type": "ram", "format": "RAM {usage}%", "style": { "fg": "#ff000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
   },
   "group_hardware": {
     "type": "group", "modules": ["network", "volume", "battery", "tray"],
-    "style": { "bg": "#00000010", "radius": 20, "padding": [0, 12], "margin": [8, 0, 8, 0] }
+    "style": { "bg": "#10000000", "radius": 20, "padding": [0, 12], "margin": [8, 0, 8, 0] }
   },
-  "network": { "type": "network", "style": { "fg": "#000000", "padding": [0, 8] } },
-  "volume": { "type": "audio", "style": { "fg": "#000000", "padding": [0, 8] } },
-  "battery": { "type": "battery", "style": { "fg": "#000000", "padding": [0, 8] } },
-  "tray": { "type": "tray", "style": { "fg": "#000000", "padding": [0, 8] } }
+  "network": { "type": "network", "style": { "fg": "#ff000000", "padding": [0, 8] } },
+  "volume": { "type": "audio", "style": { "fg": "#ff000000", "padding": [0, 8] } },
+  "battery": { "type": "battery", "style": { "fg": "#ff000000", "padding": [0, 8] } },
+  "tray": { "type": "tray", "style": { "fg": "#ff000000", "padding": [0, 8] } }
 }
