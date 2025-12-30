@@ -17,6 +17,8 @@ struct RenderContext {
     int cpuUsage = 0;
     int ramUsage = 0;
     int gpuTemp = 0;
+    float volume;
+	bool isMuted;
 
     float logicalWidth;
     float logicalHeight;

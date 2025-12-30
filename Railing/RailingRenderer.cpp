@@ -112,8 +112,27 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
 
     pRenderTarget->BeginDraw();
     pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-
+    pRenderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
     RenderContext ctx;
+
+    ThemeConfig theme = ThemeLoader::Load("config.json");
+    ctx.dpi = GetDpiForWindow(hwnd);
+	float scale = (float)ctx.dpi / 96.0f;
+    RECT rc; GetClientRect(hwnd, &rc);
+    float physicalW = (float)(rc.right - rc.left);
+    float physicalH = (float)(rc.bottom - rc.top);
+    HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO mi = { sizeof(mi) };
+    GetMonitorInfo(hMon, &mi);
+    float idealW = (float)(mi.rcMonitor.right - mi.rcMonitor.left);
+    float idealH = (float)(theme.global.height * scale);
+    float animScaleX = physicalW / idealW;
+    float animScaleY = physicalH / idealH;
+    D2D1::Matrix3x2F translationToOrigin = D2D1::Matrix3x2F::Translation(-idealW / 2.0f, -idealH / 2.0f);
+    D2D1::Matrix3x2F scaleMatrix = D2D1::Matrix3x2F::Scale(animScaleX, animScaleY);
+    D2D1::Matrix3x2F translationToCenter = D2D1::Matrix3x2F::Translation(physicalW / 2.0f, physicalH / 2.0f);
+    pRenderTarget->SetTransform(translationToOrigin * scaleMatrix * translationToCenter);
+
     ctx.rt = pRenderTarget;
     ctx.writeFactory = pWriteFactory;
     ctx.textFormat = pTextFormat;
@@ -124,15 +143,14 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     ctx.cpuUsage = currentStats.cpuUsage;
 	ctx.gpuTemp = currentStats.gpuTemp;
     ctx.ramUsage = currentStats.ramUsage;
+	ctx.volume = currentStats.volume;
+	ctx.isMuted = currentStats.isMuted;
     ctx.appIcon = pAppIcon;
-    ctx.dpi = GetDpiForWindow(hwnd);
     pRenderTarget->SetDpi((float)ctx.dpi, (float)ctx.dpi);
     ctx.scale = ctx.dpi / 96.0f;
     ctx.hwnd = hwnd;
-
-    RECT rc; GetClientRect(hwnd, &rc);
-    ctx.logicalHeight = (rc.bottom - rc.top) / ctx.scale;
-    ctx.logicalWidth = (rc.right - rc.left) / ctx.scale;
+    ctx.logicalHeight = idealH / ctx.scale;
+    ctx.logicalWidth = idealW / ctx.scale;
 
     std::string pos = theme.global.position;
     ctx.isVertical = (pos == "left" || pos == "right");

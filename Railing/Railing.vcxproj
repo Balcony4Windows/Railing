@@ -86,7 +86,6 @@
     </Link>
     <PostBuildEvent>
       <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\railing.ini" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
@@ -109,7 +108,6 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </Link>
     <PostBuildEvent>
       <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\railing.ini" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
@@ -130,7 +128,6 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </Link>
     <PostBuildEvent>
       <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\railing.ini" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
@@ -153,12 +150,12 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </Link>
     <PostBuildEvent>
       <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\railing.ini" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AppBarRegistration.h" />
     <ClInclude Include="AudioBackend.h" />
     <ClInclude Include="Config.h" />
     <ClInclude Include="Dock.h" />
@@ -183,6 +180,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="WindowManager.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AppBarRegistration.cpp" />
     <ClCompile Include="Config.cpp" />
     <ClCompile Include="Dock.cpp" />
     <ClCompile Include="Indicators.cpp" />

@@ -53,20 +53,16 @@ TrayFlyout::~TrayFlyout() {
     if (pHoverBrush) pHoverBrush->Release();
 }
 
-void TrayFlyout::Toggle(int anchorX, int anchorY) {
+void TrayFlyout::Toggle(RECT iconRect) {
     ULONGLONG now = GetTickCount64();
 
-    // 1. Debounce Check
     if (now - lastAutoCloseTime < 200) return;
-
-    // 2. State Check
     if (animState == AnimationState::Visible || animState == AnimationState::Entering) {
         animState = AnimationState::Exiting;
         lastAnimTime = now;
         InvalidateRect(hwnd, NULL, FALSE);
     }
     else {
-        // --- POPULATE DUMMY DATA ---
         currentIcons.clear();
         for (int i = 0; i < 5; i++) {
             TrayIconData dummy;
@@ -74,30 +70,35 @@ void TrayFlyout::Toggle(int anchorX, int anchorY) {
             currentIcons.push_back(dummy);
         }
 
-        // --- CALC DIMENSIONS ---
         int iconSize = 24;
         int padding = 10;
         int cols = 3;
-        int rows = 0;
-        if (!currentIcons.empty()) rows = (int)std::ceil((float)currentIcons.size() / cols);
-        if (rows < 1) rows = 1;
-
+        int rows = (!currentIcons.empty()) ? (int)std::ceil((float)currentIcons.size() / cols) : 1;
         int width = (cols * iconSize) + ((cols + 1) * padding);
         int height = (rows * iconSize) + ((rows + 1) * padding);
 
-        // --- SET TARGET POS ---
-        targetX = anchorX - (width / 2);
-        targetY = anchorY + 10;
-        int screenH = GetSystemMetrics(SM_CYSCREEN);
-        if (targetY + height > screenH) targetY = anchorY - height - 10;
+        HMONITOR hMonitor = MonitorFromRect(&iconRect, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfo(hMonitor, &mi);
 
-        // --- START ANIMATION ---
+        int gap = 8;
+        bool isBottom = iconRect.bottom > (mi.rcWork.bottom - 100);
+        targetX = iconRect.left + ((iconRect.right - iconRect.left) / 2) - (width / 2);
+        if (isBottom) {
+            targetY = iconRect.top - height - gap;
+        }
+        else {
+            targetY = iconRect.bottom + gap;
+        }
+
+        if (targetX < mi.rcWork.left + gap) targetX = mi.rcWork.left + gap;
+        if (targetX + width > mi.rcWork.right - gap) targetX = mi.rcWork.right - gap;
+        if (targetY < mi.rcWork.top + gap) targetY = mi.rcWork.top + gap;
+        if (targetY + height > mi.rcWork.bottom - gap) targetY = mi.rcWork.bottom - gap;
         animState = AnimationState::Entering;
         currentAlpha = 0.0f;
-        currentOffset = 20.0f; // Start lower
+        currentOffset = 20.0f; // Slide distance
         lastAnimTime = now;
-
-        // Position window slightly offset for slide effect
         SetWindowPos(hwnd, HWND_TOPMOST, targetX, targetY + (int)currentOffset, width, height, SWP_SHOWWINDOW | SWP_NOACTIVATE);
         SetForegroundWindow(hwnd);
         InvalidateRect(hwnd, NULL, FALSE);

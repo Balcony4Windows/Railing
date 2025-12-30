@@ -13,40 +13,6 @@
 #pragma comment(lib, "d2d1")
 #pragma comment(lib, "shell32.lib")
 
-void UpdateBarPosition(HWND hwnd)
-{
-    POINT pt = { 0, 0 };
-    HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY);
-    MONITORINFO mi = { sizeof(MONITORINFO) };
-    GetMonitorInfo(hMon, &mi);
-
-    int monW = mi.rcMonitor.right - mi.rcMonitor.left;
-    int monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
-    ThemeConfig theme = ThemeLoader::Load("config.json");
-    std::string pos = theme.global.position; // "top", "bottom", "left", "right"
-    int barThickness = theme.global.height;  // This is "thickness"
-
-    int x = mi.rcMonitor.left;
-    int y = mi.rcMonitor.top;
-    int w = monW;
-    int h = barThickness;
-
-    if (pos == "bottom") {
-        y = mi.rcMonitor.bottom - barThickness;
-    }
-    else if (pos == "left") {
-        w = barThickness;
-        h = monH;
-    }
-    else if (pos == "right") {
-        x = mi.rcMonitor.right - barThickness;
-        w = barThickness;
-        h = monH;
-    }
-    SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    InvalidateRect(hwnd, NULL, TRUE);
-}
-
 Railing::Railing()
 {}
 Railing::~Railing() = default;
@@ -68,6 +34,44 @@ bool Railing::Initialize(HINSTANCE hInstance)
     hwndBar = CreateBarWindow(hInstance, tempConfig);
     if (!hwndBar) return false;
     tooltips.Initialize(hwndBar);
+    RegisterAppBar(hwndBar);
+    UpdateAppBarPosition(hwndBar);
+
+    RECT targetRect;
+    GetWindowRect(hwndBar, &targetRect); // UpdateAppBarPosition calculated this for us
+    int finalW = targetRect.right - targetRect.left;
+    int finalH = targetRect.bottom - targetRect.top;
+    int centerX = targetRect.left + (finalW / 2);
+    int centerY = targetRect.top + (finalH / 2);
+    SendMessage(hwndBar, WM_PAINT, 0, 0);
+    ShowWindow(hwndBar, SW_SHOW);
+	auto &anim = tempConfig.global.animation;
+    if (anim.enabled && anim.duration > 0) { // Calculate timing based on FPS
+        int frameDelay = 1000 / anim.fps;
+        int totalSteps = anim.duration / frameDelay;
+        if (totalSteps < 1) totalSteps = 1;
+
+        for (int i = 1; i <= totalSteps; i++) {
+            float progress = (float)i / totalSteps;
+            float ease = 1.0f - pow(1.0f - progress, 3.0f);
+            float currentScale = anim.startScale + ((1.0f - anim.startScale) * ease);
+            int currentW = (int)(finalW * currentScale);
+            int currentH = (int)(finalH * currentScale);
+            if (currentW % 2 != 0) currentW++;
+            if (currentH % 2 != 0) currentH++;
+            if (currentW < 10) currentW = 10;
+            if (currentH < 2) currentH = 2;
+            int currentX = centerX - (currentW / 2);
+            int currentY = centerY - (currentH / 2);
+            SetWindowPos(hwndBar, HWND_TOPMOST,
+                currentX, currentY, currentW, currentH,
+                SWP_NOACTIVATE | SWP_NOZORDER);
+
+            UpdateWindow(hwndBar);
+            Sleep(frameDelay);
+        }
+    }
+    UpdateAppBarPosition(hwndBar);
 
     // Register shell hook
     RegisterShellHookWindow(hwndBar);
@@ -85,7 +89,9 @@ bool Railing::Initialize(HINSTANCE hInstance)
     SetTimer(hwndBar, 1, 500, NULL);
 
     flyout = new VolumeFlyout(hInstance);
+    flyout->audio.EnsureInitialized(hwndBar);
     trayFlyout = new TrayFlyout(hInstance);
+
 
     ShowWindow(hwndBar, SW_SHOW);
     UpdateWindow(hwndBar);
@@ -154,7 +160,7 @@ HWND Railing::CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config)
     HWND hwnd = CreateWindowEx(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW, // Layered is critical for transparency
         CLASS_NAME, L"Railing",
-        WS_POPUP | WS_VISIBLE,
+        WS_POPUP,
         x, y, w, h,
         nullptr, nullptr, hInstance, this
     );
@@ -269,9 +275,24 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 else if (IsHovering("network", &r)) { newText = L"Network"; newRectF = r; hitFound = true; }
                 else if (IsHovering("battery", &r)) { newText = L"Battery"; newRectF = r; hitFound = true; }
                 else if (IsHovering("cpu", &r)) { newText = L"CPU Usage"; newRectF = r; hitFound = true; }
+                else if (IsHovering("gpu", &r)) { newText = L"GPU Temperature"; newRectF = r; hitFound = true; }
                 else if (IsHovering("ram", &r)) { newText = L"RAM Usage"; newRectF = r; hitFound = true; }
                 else if (IsHovering("tray", &r)) { newText = L"System Tray"; newRectF = r; hitFound = true; }
                 else if (IsHovering("notification", &r)) { newText = L"Notifications"; newRectF = r; hitFound = true; }
+                else if (IsHovering("ping", &r)) {
+                    Module *m = self->renderer->GetModule("ping");
+                    PingModule *pm = static_cast<PingModule *>(m);
+
+                    if (pm) {
+                        std::string ip = pm->targetIP;
+                        std::wstring w_ip(ip.begin(), ip.end());
+                        newText = L"Ping Target: " + w_ip + L"\nLatency: " + std::to_wstring(pm->lastPing) + L"ms";
+                    }
+                    else newText = L"Latency";
+
+                    newRectF = r;
+                    hitFound = true;
+                }
                 else if (IsHovering("clock", &r)) {
                     SYSTEMTIME st; GetLocalTime(&st);
                     wchar_t buf[64];
@@ -286,7 +307,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 if (self->lastTooltipText != newText) {
                     self->lastTooltipText = newText;
                     RECT logRect = { (LONG)newRectF.left, (LONG)newRectF.top, (LONG)newRectF.right, (LONG)newRectF.bottom };
-                    self->tooltips.Show(self->lastTooltipText.c_str(), logRect, scale);
+                    self->tooltips.Show(self->lastTooltipText.c_str(), logRect, self->renderer->theme.global.position, scale);
                 }
             }
             else {
@@ -307,114 +328,55 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_LBUTTONDOWN:
     {
         if (!self || !self->renderer) break;
+
         int mx = GET_X_LPARAM(lParam);
         int my = GET_Y_LPARAM(lParam);
         POINT pt = { mx, my };
         float dpi = (float)GetDpiForWindow(hwnd);
         float scale = dpi / 96.0f;
-
-        bool handled = false;
-
-        RECT iconRect = self->renderer->GetAppIconRect();
-        if (PtInRect(&iconRect, pt)) {
-            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
-            return 0;
-        }
-
-        for (const auto &target : self->windowTargets) {
-            if (PtInRect(&target.rect, pt)) {
-                if (IsWindow(target.hwnd)) {
-                    if (IsIconic(target.hwnd)) ShowWindow(target.hwnd, SW_RESTORE);
-                    else ShowWindow(target.hwnd, SW_MINIMIZE);
-                    SetForegroundWindow(target.hwnd);
-                }
-                handled = true;
-                break;
-            }
-        }
-        if (handled) break;
-
-        std::string pos = self->renderer->theme.global.position;
-        auto IsModuleClicked = [&](std::string id) -> bool {
+        RECT barRect;
+        GetWindowRect(hwnd, &barRect);
+        auto GetModuleScreenRect = [&](std::string id, RECT *outScreenRect) -> bool {
             D2D1_RECT_F f = self->renderer->GetModuleRect(id);
-            RECT r = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
-            return PtInRect(&r, pt);
+            if (f.right == 0.0f) return false;
+            RECT localR = {
+                (LONG)(f.left * scale),
+                (LONG)(f.top * scale),
+                (LONG)(f.right * scale),
+                (LONG)(f.bottom * scale)
             };
 
-        if (IsModuleClicked("audio")) {
-            RECT barRect; GetWindowRect(hwnd, &barRect);
-            D2D1_RECT_F volF = self->renderer->GetModuleRect("audio");
+            if (outScreenRect) {
+                outScreenRect->left = barRect.left + localR.left;
+                outScreenRect->top = barRect.top + localR.top;
+                outScreenRect->right = barRect.left + localR.right;
+                outScreenRect->bottom = barRect.top + localR.bottom;
+            }
+            return PtInRect(&localR, pt);
+            };
 
-            int anchorX = 0;
-            int anchorY = 0;
+        bool handled = false;
+        RECT targetRect;
 
-            if (pos == "left") {
-                anchorX = barRect.right + 100;
-                anchorY = barRect.top + (int)(volF.top * scale);
-            }
-            else if (pos == "right") {
-                anchorX = barRect.left - 300; // Subtract approx width of flyout
-                anchorY = barRect.top + (int)(volF.top * scale);
-            }
-            else if (pos == "bottom") {
-                anchorX = barRect.left + (int)(volF.left * scale);
-                anchorY = barRect.top - 300; // Subtract height
-            }
-            else {
-                anchorX = barRect.left + (int)(volF.left * scale);
-                anchorY = barRect.bottom;
-            }
-
-            if (!self->flyout) self->flyout = new VolumeFlyout(GetModuleHandle(NULL));
-            self->flyout->Toggle(anchorX, anchorY);
+        if (GetModuleScreenRect("app_icon", &targetRect)) {
+            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
             handled = true;
         }
-        else if (IsModuleClicked("tray")) { // Tray Click
-            RECT barRect; GetWindowRect(hwnd, &barRect);
-            D2D1_RECT_F arrowF = self->renderer->GetModuleRect("tray");
-            int anchorX = 0;
-            int anchorY = 0;
-
-            if (pos == "left") {
-                anchorX = barRect.right;
-                anchorY = barRect.top + (int)(arrowF.top * scale);
-            }
-            else if (pos == "right") {
-                anchorX = barRect.left - 300; // Subtract approx width of flyout
-                anchorY = barRect.top + (int)(arrowF.top * scale);
-            }
-            else if (pos == "bottom") {
-                anchorX = barRect.left + (int)(arrowF.left * scale);
-                anchorY = barRect.top - 300; // Subtract height
-            }
-            else {
-                anchorX = barRect.left + (int)(arrowF.left * scale);
-                anchorY = barRect.bottom;
-            }
-            if (self->trayFlyout) self->trayFlyout->Toggle(anchorX, anchorY);
-            handled = true;
-        }
-        else if (IsModuleClicked("network")) { // Network Click
-            ShellExecute(NULL, L"open", L"ms-settings:network", NULL, NULL, SW_SHOWNORMAL);
-            handled = true;
-        }
-        else if (IsModuleClicked("workspaces")) { // Workspaces Click
+        // Workspaces
+        else if (GetModuleScreenRect("workspaces", &targetRect)) {
             Module *m = self->renderer->GetModule("workspaces");
             if (m) {
                 WorkspacesModule *ws = (WorkspacesModule *)m;
                 D2D1_RECT_F rectF = ws->cachedRect;
-
                 float fullItemSize = ws->itemWidth + ws->itemPadding;
-                int index = 0;
 
-                // FIX: Check Orientation
+                int index = 0;
+                std::string pos = self->renderer->theme.global.position;
                 if (pos == "left" || pos == "right") {
-                    // Vertical: Calculate offset using Y
                     float localY = ((float)pt.y / scale) - rectF.top;
                     index = (int)(localY / fullItemSize);
                 }
                 else {
-                    // Horizontal: Calculate offset using X
                     float localX = ((float)pt.x / scale) - rectF.left;
                     index = (int)(localX / fullItemSize);
                 }
@@ -426,7 +388,28 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             }
             handled = true;
         }
-        else if (IsModuleClicked("notification")) {
+        else if (GetModuleScreenRect("audio", &targetRect)) {
+            if (self->flyout) self->flyout->Toggle(targetRect);
+            handled = true;
+        }
+        else if (GetModuleScreenRect("tray", &targetRect)) {
+            if (!self->trayFlyout) self->trayFlyout = new TrayFlyout(GetModuleHandle(NULL));
+            self->trayFlyout->Toggle(targetRect);
+            handled = true;
+        }
+        else if (GetModuleScreenRect("network", &targetRect)) {
+            ShellExecute(NULL, L"open", L"ms-settings:network", NULL, NULL, SW_SHOWNORMAL);
+            handled = true;
+        }
+		else if (GetModuleScreenRect("app_icon", &targetRect)) {
+            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
+            handled = true;
+        }
+        else if (GetModuleScreenRect("battery", &targetRect)) {
+            ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
+            handled = true;
+        }
+        else if (GetModuleScreenRect("notification", &targetRect)) {
             INPUT inputs[4] = {};
             inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
             inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'N';
@@ -435,18 +418,30 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             SendInput(4, inputs, sizeof(INPUT));
             handled = true;
         }
-        else if (IsModuleClicked("battery")) {
-            ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
-            handled = true;
+
+        if (!handled) {
+            for (const auto &target : self->windowTargets) {
+                if (PtInRect(&target.rect, pt)) {
+                    if (IsWindow(target.hwnd)) {
+                        if (IsIconic(target.hwnd)) ShowWindow(target.hwnd, SW_RESTORE);
+                        else ShowWindow(target.hwnd, SW_MINIMIZE);
+                        SetForegroundWindow(target.hwnd);
+                    }
+                    handled = true;
+                    break;
+                }
+            }
         }
-        else if (IsModuleClicked("app_icon")) {
-            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
-            handled = true;
-        }
+        return 0;
     }
-    return 0;
     case WM_TIMER:
         if (wParam == 1) if (self) self->UpdateSystemStats();
+        return 0;
+    case WM_SIZE:
+        if (self && self->renderer) {
+            self->renderer->Resize();
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
         return 0;
     case WM_POWERBROADCAST:
         if (wParam == PBT_APMPOWERSTATUSCHANGE) InvalidateRect(hwnd, NULL, FALSE);
@@ -463,7 +458,23 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             return TRUE;
         }
         break;
+    case WM_RAILING_AUDIO_UPDATE:
+        if (self) { // Check self, not renderer yet
+            int volPercent = (int)wParam;
+            bool isMuted = (bool)lParam;
+            self->cachedVolume = volPercent / 100.0f;
+            self->cachedMute = isMuted;
+
+            InvalidateRect(hwnd, NULL, FALSE);
+            if (self->flyout && self->flyout->IsVisible())
+                InvalidateRect(self->flyout->hwnd, NULL, FALSE);
+        }
+        return 0;
+    case WM_RAILING_APPBAR: // Re-check size
+		if (wParam == ABN_POSCHANGED) UpdateAppBarPosition(hwnd);
+        return 0;
     case WM_DESTROY:
+        UnregisterAppBar(hwnd);
         if (self && self->titleHook) {
             UnhookWinEvent(self->titleHook);
             self->titleHook = nullptr;
@@ -523,6 +534,8 @@ void Railing::DrawBar(HWND hwnd) {
     statsData.cpuUsage = cachedCpuUsage;
     statsData.ramUsage = cachedRamUsage;
     statsData.gpuTemp = cachedGpuTemp;
+    statsData.volume = cachedVolume;
+    statsData.isMuted = cachedMute;
 
     renderer->UpdateStats(statsData);
     renderer->Draw(allWindows, foreground, windowTargets);

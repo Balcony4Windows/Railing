@@ -8,7 +8,7 @@ public:
     ~TooltipHandler();
 
     void Initialize(HWND hParent);
-    void Show(const std::wstring &text, RECT iconRect, float scale);
+    void Show(const std::wstring &text, RECT iconRect, std::string &position, float scale);
 
     void Hide();
 

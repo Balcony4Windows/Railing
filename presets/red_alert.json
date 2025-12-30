@@ -7,7 +7,7 @@
     "font": "Consolas",
     "font_size": 10,
     "font_weight": "normal",
-    "background": "#000000ff",
+    "background": "#FF000000",
     "blur": false,
     "radius": 0,
     "border_width": 0,
@@ -16,7 +16,7 @@
   "layout": {
     "left": ["workspaces"],
     "center": ["clock"],
-    "right": ["cpu", "gpu", "ram", "group_hardware"]
+    "right": ["cpu", "gpu", "ram", "ping", "group_hardware"]
   },
   "workspaces": {
     "type": "workspaces",
@@ -32,17 +32,21 @@
     "style": { "fg": "#ff0000", "bg": "#000000", "padding": [0, 0] }
   },
   "cpu": {
-    "type": "cpu", "format": "CPU:{usage}%", "interval": 1000,
+    "type": "cpu", "format": "CPU: {usage}%", "interval": 1000,
     "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
     "thresholds": [{ "val": 90, "style": { "fg": "#ffffff", "bg": "#ff0000" } }]
   },
   "gpu": {
-    "type": "gpu", "format": "GPU:{temp}\u00B0C", "interval": 1000,
+    "type": "gpu", "format": "GPU: {temp}\u00B0C", "interval": 1000,
     "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
     "thresholds": [{ "val": 80, "style": { "fg": "#ffffff", "bg": "#ff0000" } }]
   },
   "ram": {
-    "type": "ram", "format": "RAM:{usage}%",
+    "type": "ram", "format": "RAM: {usage}%",
+    "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] }
+  },
+    "ping": {
+    "type": "ping", "format": "PING: {ping}ms",
     "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
   "group_hardware": {

@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <vector>
+#include <shellapi.h> // For SHAppBarMessage
 #include "resource.h"
 #include "Types.h"
 #include <dwmapi.h>
@@ -11,11 +12,16 @@
 #include "SystemStats.h"
 #include "TooltipHandler.h"
 #include "GpuStats.h"
+#include "AppBarRegistration.h"
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)
 #define CMD_SWITCH_WORKSPACE 1
 #define CMD_RELOAD_CONFIG 2
+
+void RegisterAppBar(HWND hwnd);
+void UnregisterAppBar(HWND hwnd);
+void UpdateAppBarPosition(HWND hwnd);
 
 class VolumeFlyout;
 class RailingRenderer;
@@ -59,6 +65,8 @@ private:
 	ULONGLONG lastGpuUpdate = 0;
 	ULONGLONG lastNetUpdate = 0;
 	ULONGLONG lastClockUpdate = 0;
+	float cachedVolume = 0;
+	bool cachedMute = false;
 	SystemStats stats;
 	GpuStats gpuStats;
 	int cachedGpuTemp = 0;

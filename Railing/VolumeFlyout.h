@@ -15,9 +15,13 @@ class VolumeFlyout {
 public:
     VolumeFlyout(HINSTANCE hInst);
     ~VolumeFlyout();
+    AudioBackend audio;
+    HWND hwnd = nullptr;
 
-    void Toggle(int anchorX, int anchorY); // Open/Close
+    void Toggle(RECT iconRect); // Open/Close
     bool IsVisible();
+    enum class AnimationState { Hidden, Entering, Visible, Exiting };
+    AnimationState animState = AnimationState::Hidden;
 
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -25,12 +29,9 @@ private:
     void Draw();
     void OnClick(int x, int y);
     void OnDrag(int x, int y);
-
-    // device management
+	void PositionWindow(RECT iconRect);
     void RefreshDevices();
 
-    HWND hwnd = nullptr;
-    AudioBackend audio;
     std::vector<AudioDeviceInfo> devices;
 
     // D2D Resources
@@ -43,19 +44,27 @@ private:
     static IDWriteTextFormat *pTextFormat;
 
     // State
+    bool isHoveringOpenButton = false;
     bool isDropdownOpen = false; // Output device list toggle
     bool isDraggingSlider = false;
     bool isHoveringSlider = false;
-    float cachedVolume = 0.0f; // for smooth sliding
+    float cachedVolume = 0.0f;
     ULONGLONG lastAudioUpdate = 0;
 
     // Animation
     int targetX = 0;
     int targetY = 0;
-    enum class AnimationState { Hidden, Entering, Visible, Exiting };
-    AnimationState animState = AnimationState::Hidden;
     float currentAlpha = 0.0f;
-    float currentOffset = 10.0f; // Start 10px below final position
+    float currentOffset = 10.0f;
+
+    float scrollOffset = 0.0f;
+    bool isDraggingScrollbar = false;
+    float dragStartY = 0.0f;
+    float dragStartScrollOffset = 0.0f;
+    D2D1_RECT_F scrollTrackRect = { 0 };
+    D2D1_RECT_F scrollThumbRect = { 0 };
+    float maxScroll = 0.0f;
+
     static ULONGLONG lastAnimTime;
     static ULONGLONG lastAutoCloseTime;
     void UpdateAnimation();

@@ -50,6 +50,13 @@ public:
 			if (g.contains("radius")) config.global.radius = g.value("radius", 0.0f);
 			if (g.contains("border_width")) config.global.borderWidth = g.value("border_width", 0.0f);
 			if (g.contains("border_color")) config.global.borderColor = ParseColor(g["border_color"]);
+			if (g.contains("animation")) {
+				auto &a = g["animation"];
+				config.global.animation.enabled = a.value("enabled", true);
+				config.global.animation.duration = a.value("duration", 300);
+				config.global.animation.startScale = a.value("start_scale", 0.1f);
+				config.global.animation.fps = a.value("fps", 60);
+			}
 		}
 		if (j.contains("layout")) {
 			auto &l = j["layout"];
@@ -67,6 +74,8 @@ public:
 			mod.format = val.value("format", "");
 			mod.interval = val.value("interval", 0);
 			mod.orientation = val.value("orientation", "horizontal");
+			mod.baseStyle = Style();
+			if (val.contains("target")) mod.target = val["target"].get<std::string>();
 			if (val.contains("style")) mod.baseStyle = ParseStyle(val["style"]);
 			if (val.contains("item_style")) mod.itemStyle = ParseStyle(val["item_style"]);
 			if (val.contains("modules")) mod.groupModules = val["modules"].get<std::vector<std::string>>();

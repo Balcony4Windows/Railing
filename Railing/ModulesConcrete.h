@@ -7,7 +7,6 @@
 #include <thread>
 #include <atomic>
 #include <string>
-#include <algorithm>
 #include "Module.h"
 #include <ctime>
 #pragma comment(lib, "IPHLPAPI.lib")
@@ -74,17 +73,21 @@ private:
 		struct tm tstruct;
 		localtime_s(&tstruct, &now);
 		wchar_t buf[128];
+
 		std::string fmt = config.format.empty() ? "%H:%M" : config.format;
-
-		if (fmt.front() == '{' && fmt.back() == '}') {
-			fmt = fmt.substr(1, fmt.size() - 2);
+		size_t pos = 0;
+		while ((pos = fmt.find("{:")) != std::string::npos) {
+			fmt.replace(pos, 2, "");
 		}
-		if (fmt.find(":%") == 0) {
-			fmt = fmt.substr(1);
+		pos = 0;
+		while ((pos = fmt.find("}")) != std::string::npos) {
+			fmt.replace(pos, 1, "");
 		}
-
 		std::wstring wfmt(fmt.begin(), fmt.end());
-		wcsftime(buf, 128, wfmt.c_str(), &tstruct);
+		if (wcsftime(buf, std::size(buf), wfmt.c_str(), &tstruct) == 0) {
+			return L"Format Error";
+		}
+
 		return buf;
 	}
 };
@@ -184,12 +187,19 @@ public:
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
-		std::wstring text = L"\uE774"; // Placeholder icon
-		if (config.type == "network") text = L"\uE774"; /* globe */
-		if (config.type == "audio") text = L"\uE767"; /* volume */
-		if (config.type == "battery") text = L"\uE83F"; /* battery */
-		if (config.type == "tray") text = L"\uE70E"; /* Chevron Up */
-		if (config.type == "notification") text = L"\uEA8F"; /* bell */
+		std::wstring text = L"\uE774"; // Default Globe
+		if (config.type == "network" || config.id == "network") text = L"\uE774";
+
+		if (config.type == "audio" || config.id == "audio") {
+			if (ctx.isMuted || ctx.volume == 0.0f) text = L"\uE74F"; // Mute
+			else if (ctx.volume < 0.33f) text = L"\uE993"; // Low
+			else if (ctx.volume < 0.66f) text = L"\uE994"; // Medium
+			else text = L"\uE995"; // High
+		}
+
+		if (config.type == "battery" || config.id == "battery") text = L"\uE83F";
+		if (config.type == "tray" || config.id == "tray") text = L"\uE70E";
+		if (config.type == "notification" || config.id == "notification") text = L"\uEA8F";
 
 		D2D1_RECT_F rect = D2D1::RectF(x, y, x + w, y + h);
 		ctx.textBrush->SetColor(config.baseStyle.fg);
@@ -227,7 +237,9 @@ public:
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
 		D2D1_COLOR_F color = config.baseStyle.fg;
-		if (ctx.ramUsage > 80) color = D2D1::ColorF(D2D1::ColorF::OrangeRed);
+		for (const auto &th : config.thresholds) {
+			if (ctx.ramUsage >= th.val) color = th.style.fg;
+		}
 		DrawProgressBar(ctx, x, y, w, h, ctx.ramUsage / 100.0f, color);
 
 		std::string fmt = config.format.empty() ? "RAM: {usage}%" : config.format;
@@ -257,11 +269,11 @@ public:
 };
 
 class PingModule : public Module {
-	std::atomic<int> lastPing = 0;
 	std::atomic<bool> stopThread = false;
 	std::thread worker;
-
 public:
+	std::string targetIP;
+	std::atomic<int> lastPing = 0;
 	PingModule(const ModuleConfig &cfg) : Module(cfg) 
 	{
 		worker = std::thread([this]() {
@@ -272,7 +284,8 @@ public:
 			LPVOID ReplyBuffer = nullptr;
 			DWORD ReplySize = 0;
 
-			inet_pton(AF_INET, "8.8.8.8", &ipaddr); // Sent to Google DNS
+			targetIP = config.target.empty() ? "8.8.8.8" : config.target;
+			inet_pton(AF_INET, targetIP.c_str(), &ipaddr);
 			hIcmpFile = IcmpCreateFile();
 			if (hIcmpFile == INVALID_HANDLE_VALUE) return;
 			ReplySize = sizeof(ICMP_ECHO_REPLY) + sizeof(SendData);
@@ -315,7 +328,7 @@ public:
 		}
 
 		D2D1_RECT_F rect = D2D1::RectF(x, y, x + w, y + h);
-		ctx.textBrush->SetColor(color);
+		ctx.textBrush->SetColor(D2D1::ColorF(D2D1::ColorF::White));
 		ctx.rt->DrawTextW(text.c_str(), (UINT32)text.length(), ctx.textFormat, rect, ctx.textBrush);
 	}
 };

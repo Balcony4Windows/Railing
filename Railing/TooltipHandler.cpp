@@ -31,7 +31,7 @@ LRESULT CALLBACK TooltipWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
 
         InflateRect(&rc, -12, -8);
-        DrawTextW(hdc, text, -1, &rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, text, -1, &rc, DT_LEFT | DT_NOPREFIX);
 
         SelectObject(hdc, hOldFont);
         DeleteObject(hFont);
@@ -57,6 +57,7 @@ void TooltipHandler::Initialize(HWND hParent) {
     wc.lpszClassName = L"RailingTooltip";
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = NULL;
+	wc.style = CS_HREDRAW | CS_VREDRAW;
     RegisterClass(&wc);
 
     hwndTooltip = CreateWindowEx(
@@ -66,9 +67,11 @@ void TooltipHandler::Initialize(HWND hParent) {
         0, 0, 0, 0,
         NULL, NULL, wc.hInstance, NULL
     );
+
+	SetLayeredWindowAttributes(hwndTooltip, 0, 255, LWA_ALPHA);
 }
 
-void TooltipHandler::Show(const std::wstring &text, RECT iconRect, float scale) {
+void TooltipHandler::Show(const std::wstring &text, RECT iconRect, std::string &position, float scale) {
     if (!hwndTooltip) return;
     if (text == currentText && IsWindowVisible(hwndTooltip)) return;
 
@@ -88,7 +91,11 @@ void TooltipHandler::Show(const std::wstring &text, RECT iconRect, float scale) 
 
     RECT barRect;
     GetWindowRect(hwndParent, &barRect);
-    int tooltipY = barRect.bottom + 4;
+    int tooltipY;
+
+    if (position == "bottom") {
+        tooltipY = barRect.top - height - 4;
+    } else tooltipY = barRect.bottom + 4;
 
     if (ptScreen.x < 0) ptScreen.x = 0;
 
@@ -115,7 +122,10 @@ SIZE TooltipHandler::GetTextSize(const std::wstring &text) {
             CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
         HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
 
-        GetTextExtentPoint32W(hdc, text.c_str(), (int)text.length(), &size);
+		RECT rcCalc = { 0, 0, 0, 0 };
+		DrawTextW(hdc, text.c_str(), (int)text.length(), &rcCalc, DT_LEFT | DT_NOPREFIX | DT_CALCRECT);
+        size.cx = rcCalc.right - rcCalc.left;
+        size.cy = rcCalc.bottom - rcCalc.top;
 
         SelectObject(hdc, hOldFont);
         DeleteObject(hFont);

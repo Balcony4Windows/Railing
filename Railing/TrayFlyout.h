@@ -9,7 +9,7 @@ public:
     TrayFlyout(HINSTANCE hInst);
     ~TrayFlyout();
 
-    void Toggle(int anchorX, int anchorY);
+    void Toggle(RECT iconRect);
     bool IsVisible();
 
 private:

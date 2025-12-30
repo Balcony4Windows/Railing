@@ -23,7 +23,6 @@ struct Padding {
     }
 };
 
-// Style Definition (Background, Radius, Margin, etc.)
 struct Style {
     D2D1_COLOR_F bg = D2D1::ColorF(0, 0, 0, 0); // Default Transparent
     D2D1_COLOR_F fg = D2D1::ColorF(1, 1, 1, 1); // Default White
@@ -37,7 +36,6 @@ struct Style {
     bool has_bg = false; // Flag to know if we should draw BG or not
 };
 
-// Conditional Thresholds (for CPU/Battery colors)
 struct Threshold {
     int val;
     Style style;
@@ -48,6 +46,7 @@ struct ModuleConfig {
     std::string id; // e.g., "cpu", "workspaces"
     std::string type; // e.g., "cpu", "group", "clock"
     std::string format; // e.g., "{icon} {vol}%"
+	std::string target; // For ping module
     int interval = 0;
 
     Style baseStyle;
@@ -61,6 +60,12 @@ struct ModuleConfig {
 
 // The Root Configuration
 struct ThemeConfig {
+    struct Animation {
+        bool enabled = true;
+        int duration = 300;
+        float startScale = 0.1f;
+        int fps = 60;
+    };
     struct Global {
         int height = 40;
         std::string position = "top";
@@ -73,6 +78,7 @@ struct ThemeConfig {
         float radius = 0.0f;
         float borderWidth = 0.0f;
         D2D1_COLOR_F borderColor = D2D1::ColorF(0, 0, 0, 0);
+        Animation animation;
     } global;
 
     struct Layout {

@@ -17,6 +17,8 @@ public:
         int cpuUsage = 0;
         int ramUsage = 0;
 		int gpuTemp = 0;
+        float volume = 0.0f;
+        float isMuted = false;
     };
     RailingRenderer(HWND hwnd);
     ~RailingRenderer();
@@ -36,13 +38,8 @@ public:
     bool HitTest(POINT pt, const std::vector<Dock::ClickTarget> &targets);
     D2D1_RECT_F GetModuleRect(std::string moduleId);
     Module *GetModule(std::string id);
-
-    //D2D1_RECT_F GetTrayIconRect(){ return trayArrowRect; }
-    //D2D1_RECT_F GetBellRect() { return notifIconRect; }
-    //D2D1_RECT_F GetClockRect() { return clock.GetRect(); }
     RECT GetAppIconRect() { return iconClickRect; }
 
-	// In v2, modules will update themselves via module->Update(), but we keep this if we need to pass data down.
     void UpdateStats(const SystemStatusData &data) { currentStats = data; }
 private:
     HWND hwnd;
