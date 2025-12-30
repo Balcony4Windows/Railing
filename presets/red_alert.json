@@ -1,59 +1,62 @@
 {
-  "global": {
+"global": {
     "height": 28,
     "position": "top",
     "monitor": "primary",
     "margin": [0, 0, 0, 0],
+    "animation": {
+      "enabled": true,
+      "duration": 50,
+      "startScale": 0.2,
+      "fps": 120
+    },
     "font": "Consolas",
     "font_size": 10,
     "font_weight": "normal",
-    "background": "#FF000000",
+    "background": "#ff000000",
     "blur": false,
     "radius": 0,
     "border_width": 0,
-    "border_color": "#000000"
+    "border_color": "#ff000000"
   },
   "layout": {
     "left": ["workspaces"],
     "center": ["clock"],
-    "right": ["cpu", "gpu", "ram", "ping", "group_hardware"]
+    "right": ["cpu", "gpu", "ram", "group_hardware"]
   },
   "workspaces": {
     "type": "workspaces",
     "style": { "bg": "transparent", "radius": 0, "padding": [0, 0], "margin": [0, 0, 0, 0] },
-    "item_style": { "fg": "#444444", "padding": [0, 8], "radius": 0 },
+    "item_style": { "fg": "#ff444444", "padding": [0, 8], "radius": 0 },
     "states": {
-      "active": { "fg": "#ff0000", "bg": "#220000", "font_weight": "bold" },
-      "hover": { "fg": "#ffffff" }
+      "active": { "fg": "#ffff0000", "bg": "#ff220000", "font_weight": "bold" },
+      "hover": { "fg": "#ffffffff" }
     }
   },
-  "clock": {
-    "type": "clock", "format": "[ {:%Y-%m-%d} | {:%H:%M:%S} ]",
-    "style": { "fg": "#ff0000", "bg": "#000000", "padding": [0, 0] }
-  },
+"clock": {
+  "type": "clock", 
+  "format": "[ %Y-%m-%d | %H:%M:%S ]",
+  "style": { "fg": "#ffff0000", "bg": "#ff000000", "padding": [0, 0] }
+},
   "cpu": {
-    "type": "cpu", "format": "CPU: {usage}%", "interval": 1000,
-    "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
-    "thresholds": [{ "val": 90, "style": { "fg": "#ffffff", "bg": "#ff0000" } }]
+    "type": "cpu", "format": "CPU:{usage}%", "interval": 1000,
+    "style": { "fg": "#ffff0000", "bg": "#ff000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
+    "thresholds": [{ "val": 90, "style": { "fg": "#ffffffff", "bg": "#ffff0000" } }]
   },
   "gpu": {
-    "type": "gpu", "format": "GPU: {temp}\u00B0C", "interval": 1000,
-    "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
-    "thresholds": [{ "val": 80, "style": { "fg": "#ffffff", "bg": "#ff0000" } }]
+    "type": "gpu", "format": "GPU:{temp}\u00B0C", "interval": 1000,
+    "style": { "fg": "#ffff0000", "bg": "#ff000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
+    "thresholds": [{ "val": 80, "style": { "fg": "#ffffffff", "bg": "#ffff0000" } }]
   },
   "ram": {
-    "type": "ram", "format": "RAM: {usage}%",
-    "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] }
-  },
-    "ping": {
-    "type": "ping", "format": "PING: {ping}ms",
-    "style": { "fg": "#ff0000", "bg": "#000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] }
+    "type": "ram", "format": "RAM:{usage}%",
+    "style": { "fg": "#ffff0000", "bg": "#ff000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
   "group_hardware": {
     "type": "group", "modules": ["network", "volume", "battery"],
-    "style": { "bg": "#111111", "radius": 0, "padding": [0, 4], "margin": [4, 4, 4, 4], "border_width": 1, "border_color": "#333333" }
+    "style": { "bg": "#ff111111", "radius": 0, "padding": [0, 4], "margin": [4, 4, 4, 4], "border_width": 1, "border_color": "#ff333333" }
   },
-  "network": { "type": "network", "style": { "fg": "#aaaaaa", "padding": [0, 6] } },
-  "volume": { "type": "audio", "style": { "fg": "#aaaaaa", "padding": [0, 6] } },
-  "battery": { "type": "battery", "style": { "fg": "#aaaaaa", "padding": [0, 6] } }
+  "network": { "type": "network", "style": { "fg": "#ffaaaaaa", "padding": [0, 6] } },
+  "volume": { "type": "audio", "style": { "fg": "#ffaaaaaa", "padding": [0, 6] } },
+  "battery": { "type": "battery", "style": { "fg": "#ffaaaaaa", "padding": [0, 6] } }
 }
