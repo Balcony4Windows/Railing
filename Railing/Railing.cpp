@@ -272,6 +272,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             auto IsHovering = [&](const char *id, D2D1_RECT_F *outRect) -> bool {
                 D2D1_RECT_F r = self->renderer->GetModuleRect(id);
                 if (r.right == 0.0f && r.bottom == 0.0f) return false;
+
                 RECT phys = {
                     (LONG)(r.left * scale), (LONG)(r.top * scale),
                     (LONG)(r.right * scale), (LONG)(r.bottom * scale)

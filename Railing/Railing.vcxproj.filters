@@ -87,6 +87,12 @@
     <ClInclude Include="AppBarRegistration.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Style.h">
+      <Filter>Themes</Filter>
+    </ClInclude>
+    <ClInclude Include="CssParser.h">
+      <Filter>Themes</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Railing.cpp">

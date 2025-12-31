@@ -146,21 +146,38 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     RenderContext ctx;
 
     ctx.dpi = GetDpiForWindow(hwnd);
-	float scale = (float)ctx.dpi / 96.0f;
+    float scale = (float)ctx.dpi / 96.0f;
     RECT rc; GetClientRect(hwnd, &rc);
-    float physicalW = (float)(rc.right - rc.left);
-    float physicalH = (float)(rc.bottom - rc.top);
+    float currentW = (float)(rc.right - rc.left);
+    float currentH = (float)(rc.bottom - rc.top);
+
     HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi = { sizeof(mi) };
     GetMonitorInfo(hMon, &mi);
-    float idealW = (float)(mi.rcMonitor.right - mi.rcMonitor.left);
-    float idealH = (float)(theme.global.height * scale);
-    float animScaleX = physicalW / idealW;
-    float animScaleY = physicalH / idealH;
-    D2D1::Matrix3x2F translationToOrigin = D2D1::Matrix3x2F::Translation(-idealW / 2.0f, -idealH / 2.0f);
-    D2D1::Matrix3x2F scaleMatrix = D2D1::Matrix3x2F::Scale(animScaleX, animScaleY);
-    D2D1::Matrix3x2F translationToCenter = D2D1::Matrix3x2F::Translation(physicalW / 2.0f, physicalH / 2.0f);
-    pRenderTarget->SetTransform(translationToOrigin * scaleMatrix * translationToCenter);
+    float screenW = (float)(mi.rcMonitor.right - mi.rcMonitor.left);
+    float screenH = (float)(mi.rcMonitor.bottom - mi.rcMonitor.top);
+
+    float targetW = 0.0f;
+    float targetH = 0.0f;
+    std::string pos = theme.global.position;
+    ctx.isVertical = (pos == "left" || pos == "right");
+    if (ctx.isVertical) {
+        targetW = theme.global.height * scale;
+        targetH = screenH - (theme.global.margin.top * scale) - (theme.global.margin.bottom * scale);
+    }
+    else {
+        targetW = screenW - (theme.global.margin.left * scale) - (theme.global.margin.right * scale);
+        targetH = theme.global.height * scale;
+    }
+    float scaleX = (targetW > 0) ? currentW / targetW : 1.0f;
+    float scaleY = (targetH > 0) ? currentH / targetH : 1.0f;
+    D2D1::Matrix3x2F transform = D2D1::Matrix3x2F::Scale(
+        D2D1::Size(scaleX, scaleY),
+        D2D1::Point2F(currentW / 2.0f, currentH / 2.0f)
+    );
+    pRenderTarget->SetTransform(transform);
+    ctx.logicalWidth = targetW / scale;
+    ctx.logicalHeight = targetH / scale;
 
     ctx.rt = pRenderTarget;
     ctx.writeFactory = pWriteFactory;
@@ -178,11 +195,6 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     pRenderTarget->SetDpi((float)ctx.dpi, (float)ctx.dpi);
     ctx.scale = ctx.dpi / 96.0f;
     ctx.hwnd = hwnd;
-    ctx.logicalHeight = idealH / ctx.scale;
-    ctx.logicalWidth = idealW / ctx.scale;
-
-    std::string pos = theme.global.position;
-    ctx.isVertical = (pos == "left" || pos == "right");
 
     if (!theme.global.blur) {
         D2D1_RECT_F mainRect = D2D1::RectF(0.0f, 0.0f, ctx.logicalWidth, ctx.logicalHeight);
