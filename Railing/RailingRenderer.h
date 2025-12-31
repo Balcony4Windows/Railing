@@ -31,6 +31,7 @@ public:
     Dock dock;
     SystemStatusData currentStats;
 
+    void Reload();
     void Draw(const std::vector<WindowInfo> &windows, HWND activeWindow, std::vector<Dock::ClickTarget> &outTargets);
     void Resize();
     static void EnableBlur(HWND hwnd, DWORD nColor);

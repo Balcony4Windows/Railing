@@ -76,9 +76,11 @@ public:
 			mod.orientation = val.value("orientation", "horizontal");
 			mod.baseStyle = Style();
 			if (val.contains("target")) mod.target = val["target"].get<std::string>();
+			if (val.contains("on_click")) mod.onClick = val["on_click"].get<std::string>();
 			if (val.contains("style")) mod.baseStyle = ParseStyle(val["style"]);
 			if (val.contains("item_style")) mod.itemStyle = ParseStyle(val["item_style"]);
 			if (val.contains("modules")) mod.groupModules = val["modules"].get<std::vector<std::string>>();
+			if (val.contains("icon")) mod.icon = val["icon"].get<std::string>();
 			if (val.contains("thresholds")) {
 				for (auto &t : val["thresholds"]) {
 					Threshold th;
@@ -112,20 +114,20 @@ private:
 		float b = (val & 0xFF) / 255.0f;
 		return D2D1::ColorF(r, g, b, a);
 	}
+	// Inside ThemeLoader::ParseStyle
+
 	static Style ParseStyle(const nlohmann::json &j)
 	{
-		Style s;
-		if (j.contains("bg")) {
-			s.bg = ParseColor(j["bg"]);
-			s.has_bg = true;
-		}
-		if (j.contains("fg")) s.fg = ParseColor(j["fg"]);
-		if (j.contains("radius")) s.radius = j["radius"];
-		if (j.contains("padding")) s.padding = Padding::FromJSON(j["padding"]);
-		if (j.contains("margin")) s.margin = Padding::FromJSON(j["margin"]);
-		if (j.contains("font_weight")) s.font_weight = j["font_weight"];
-		if (j.contains("border_width")) s.borderWidth = j.value("border_width", 0.0f);
+		Style s; // Handle cascading
+		if (j.contains("bg")) { s.bg = ParseColor(j["bg"]); s.has_bg = true; }
+		if (j.contains("fg")) { s.fg = ParseColor(j["fg"]); s.has_fg = true; }
+		if (j.contains("radius")) { s.radius = j["radius"]; s.has_radius = true; }
+		if (j.contains("padding")) { s.padding = Padding::FromJSON(j["padding"]); s.has_padding = true; }
+		if (j.contains("margin")) { s.margin = Padding::FromJSON(j["margin"]); s.has_margin = true; }
+		if (j.contains("font_weight")) { s.font_weight = j["font_weight"]; s.has_font_weight = true; }
+		if (j.contains("border_width")) { s.borderWidth = j.value("border_width", 0.0f); s.has_border = true; }
 		if (j.contains("border_color")) s.borderColor = ParseColor(j["border_color"]);
+
 		return s;
 	}
 };

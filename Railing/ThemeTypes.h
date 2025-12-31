@@ -30,10 +30,31 @@ struct Style {
     Padding padding;
     Padding margin;
     std::string font_weight = "normal";
-
 	float borderWidth = 0.0f;
 	D2D1_COLOR_F borderColor = D2D1::ColorF(0, 0, 0, 0);
-    bool has_bg = false; // Flag to know if we should draw BG or not
+    bool has_bg = false;
+    bool has_fg = false;
+    bool has_radius = false;
+    bool has_padding = false;
+    bool has_margin = false;
+    bool has_border = false;
+    bool has_font_weight = false;
+
+    Style Merge(const Style &other) const {
+        Style result = *this;
+        if (other.has_bg) { result.bg = other.bg; result.has_bg = true; }
+        if (other.has_fg) { result.fg = other.fg; result.has_fg = true; }
+        if (other.has_radius) { result.radius = other.radius; result.has_radius = true; }
+        if (other.has_padding) { result.padding = other.padding; result.has_padding = true; }
+        if (other.has_margin) { result.margin = other.margin; result.has_margin = true; }
+        if (other.has_border) {
+            result.borderWidth = other.borderWidth;
+            if (other.borderColor.a > 0) result.borderColor = other.borderColor;
+            result.has_border = true;
+        }
+        if (other.has_font_weight) { result.font_weight = other.font_weight; result.has_font_weight = true; }
+        return result;
+    }
 };
 
 struct Threshold {
@@ -46,7 +67,9 @@ struct ModuleConfig {
     std::string id; // e.g., "cpu", "workspaces"
     std::string type; // e.g., "cpu", "group", "clock"
     std::string format; // e.g., "{icon} {vol}%"
-	std::string target; // For ping module
+	std::string onClick; // e.g., "open my app"
+	std::string target; // For ping module specifically
+	std::string icon; // icon location or glyph
     int interval = 0;
 
     Style baseStyle;

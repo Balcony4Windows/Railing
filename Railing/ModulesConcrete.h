@@ -56,14 +56,29 @@ public:
 		layout->GetMetrics(&metrics);
 		float w = metrics.width + 3.0f;
 		layout->Release();
-		return w;
+		return w + config.baseStyle.padding.left + config.baseStyle.padding.right
+			+ config.baseStyle.margin.left + config.baseStyle.margin.right;
 	}
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
+		Style s = GetEffectiveStyle();
+		if (s.has_bg) {
+			D2D1_RECT_F bgRect = D2D1::RectF(
+				x + s.margin.left, y + s.margin.top,
+				x + w - s.margin.right, y + h - s.margin.bottom);
+			D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(bgRect, s.radius, s.radius);
+			ctx.bgBrush->SetColor(s.bg);
+			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+		}
+
 		std::wstring text = GetTimeStr();
-		D2D1_RECT_F rect = D2D1::RectF(x, y, x + w, y + h);
-		ctx.textBrush->SetColor(config.baseStyle.fg); // NOTE: You may need to offset Y for font size
+		D2D1_RECT_F rect = D2D1::RectF(
+			x + s.margin.left + s.padding.left,
+			y + s.margin.top + s.padding.top,
+			x + w - s.margin.right - s.padding.right,
+			y + h - s.margin.bottom - s.padding.bottom);
+		ctx.textBrush->SetColor(s.fg);
 		ctx.rt->DrawTextW(text.c_str(), (UINT32)text.length(), ctx.textFormat, rect, ctx.textBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
 	}
 private:
@@ -99,32 +114,43 @@ public:
 	GroupModule(const ModuleConfig &cfg) : Module(cfg) {}
 	~GroupModule() { for (auto m : children) delete m; }
 	void AddChild(Module *m) { children.push_back(m); }
-	
+
 	float GetContentWidth(RenderContext &ctx) override
 	{
+		Style s = config.baseStyle;
 		float totalW = 0.0f;
-		for (auto child : children) {
+		totalW += s.padding.left;
+		for (auto *child : children) {
 			child->CalculateWidth(ctx);
 			totalW += child->width;
 		}
+		totalW += s.padding.right;
+		totalW += s.margin.left + s.margin.right;
 		return totalW;
 	}
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
-		float cursorX = x;
-		float cursorY = y;
-		for (auto child : children) { // Important: We tell children to draw at currentX. 
-			// Child's Draw will apply its own margins, but usually group items have transparent BG so it will be seamless.
-			float childSize = child->width;
-			if (!ctx.isVertical) {
-				child->Draw(ctx, cursorX, y, h);
-				cursorX += childSize;
-			}
-			else {
-				child->Draw(ctx, x, cursorY, w);
-				cursorY += childSize;
-			}
+		Style s = GetEffectiveStyle();
+		if (s.has_bg) {
+			D2D1_RECT_F bgRect = D2D1::RectF(
+				x + s.margin.left,
+				y + s.margin.top,
+				x + w - s.margin.right,
+				y + h - s.margin.bottom
+			);
+			D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(bgRect, s.radius, s.radius);
+			ctx.bgBrush->SetColor(s.bg);
+			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+		}
+		float cursor = x + s.margin.left + s.padding.left;
+		float topY = y + s.margin.top + s.padding.top;
+		float childH = h - s.margin.top - s.margin.bottom - s.padding.top - s.padding.bottom;
+
+		for (Module *child : children) {
+			child->cachedRect = D2D1::RectF(cursor, topY, cursor + child->width, topY + childH);
+			child->RenderContent(ctx, cursor, topY, child->width, childH);
+			cursor += child->width;
 		}
 	}
 };
@@ -135,6 +161,7 @@ public:
 	float itemWidth = 20.0f;
 	float itemPadding = 0.0f;
 	int activeIndex = 0;
+	int hoveredIndex = -1;
 	int count = 5; // default
 
 	WorkspacesModule(const ModuleConfig &cfg) : Module(cfg) {}
@@ -146,25 +173,36 @@ public:
 	}
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
-	{ // Draw 1 2 3 4 5
+	{
 		float cursor = (ctx.isVertical) ? y : x;
 		for (int i = 0; i < count; i++) {
 			Style s = config.itemStyle;
 			if (i == activeIndex && config.states.count("active")) {
-				Style activeS = config.states.at("active");
+				const Style &activeS = config.states.at("active");
+				// Manual Merge Logic
 				if (activeS.has_bg) s.bg = activeS.bg;
-				s.fg = activeS.fg;
+				if (activeS.has_fg) s.fg = activeS.fg;
+				if (activeS.has_radius) s.radius = activeS.radius;
+				if (activeS.has_font_weight) s.font_weight = activeS.font_weight;
 			}
-			D2D1_RECT_F itemRect = D2D1::RectF(cursor, y, cursor + itemWidth + itemPadding, y + h);
+			if (i == hoveredIndex && config.states.count("hover")) {
+				const Style &hoverS = config.states.at("hover");
+				if (hoverS.has_bg) s.bg = hoverS.bg;
+				if (hoverS.has_fg) s.fg = hoverS.fg;
+				if (hoverS.has_radius) s.radius = hoverS.radius;
+			}
+			D2D1_RECT_F itemRect;
 			if (!ctx.isVertical) itemRect = D2D1::RectF(cursor, y, cursor + itemWidth + itemPadding, y + h);
 			else itemRect = D2D1::RectF(x, cursor, x + w, cursor + itemWidth + itemPadding);
 
-			if (i == activeIndex || s.has_bg) {
-				D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(itemRect, config.baseStyle.radius, config.baseStyle.radius);
+			if (i == activeIndex || i == hoveredIndex || s.has_bg) {
+				D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(itemRect, s.radius, s.radius);
 				ctx.bgBrush->SetColor(s.bg);
 				ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
 			}
-			wchar_t buf[4]; // Draw 1 2 3 4 5
+
+			// Text
+			wchar_t buf[4];
 			swprintf_s(buf, L"%d", i + 1);
 			ctx.textBrush->SetColor(s.fg);
 			ctx.rt->DrawTextW(buf, (UINT32)wcslen(buf), ctx.textFormat, itemRect, ctx.textBrush);
@@ -173,6 +211,7 @@ public:
 	}
 
 	void SetActiveIndex(int index) { activeIndex = index; }
+	void SetHoveredIndex(int index) { hoveredIndex = index; }
 };
 
 class IconModule : public Module
@@ -181,12 +220,23 @@ public:
 	IconModule(const ModuleConfig &cfg) : Module(cfg) {}
 
 	float GetContentWidth(RenderContext &ctx) override
-	{ // Fixed width for icon
-		return ctx.iconFormat->GetFontSize();
+	{
+		return ctx.iconFormat->GetFontSize()
+			+ config.baseStyle.padding.left + config.baseStyle.padding.right
+			+ config.baseStyle.margin.left + config.baseStyle.margin.right;
 	}
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
+		Style s = GetEffectiveStyle();
+		if (s.has_bg) {
+			D2D1_RECT_F bgRect = D2D1::RectF(
+				x + s.margin.left, y + s.margin.top,
+				x + w - s.margin.right, y + h - s.margin.bottom);
+			D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(bgRect, s.radius, s.radius);
+			ctx.bgBrush->SetColor(s.bg);
+			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+		}
 		std::wstring text = L"\uE774"; // Default Globe
 		if (config.type == "network" || config.id == "network") text = L"\uE774";
 
@@ -201,8 +251,12 @@ public:
 		if (config.type == "tray" || config.id == "tray") text = L"\uE70E";
 		if (config.type == "notification" || config.id == "notification") text = L"\uEA8F";
 
-		D2D1_RECT_F rect = D2D1::RectF(x, y, x + w, y + h);
-		ctx.textBrush->SetColor(config.baseStyle.fg);
+		D2D1_RECT_F rect = D2D1::RectF(
+			x + s.margin.left + s.padding.left,
+			y + s.margin.top + s.padding.top,
+			x + w - s.margin.right - s.padding.right,
+			y + h - s.margin.bottom - s.padding.bottom);
+		ctx.textBrush->SetColor(s.fg);
 		ctx.rt->DrawTextW(text.c_str(), 1, ctx.iconFormat, rect, ctx.textBrush);
 	}
 };
@@ -254,14 +308,33 @@ class AppIconModule : public Module
 {
 public:
 	AppIconModule(const ModuleConfig &cfg) : Module(cfg) {}
-	float GetContentWidth(RenderContext &ctx) override { return 24.0f; }
+
+	float GetContentWidth(RenderContext &ctx) override
+	{
+		return 32.0f
+			+ config.baseStyle.padding.left + config.baseStyle.padding.right
+			+ config.baseStyle.margin.left + config.baseStyle.margin.right;
+	}
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
+		Style s = GetEffectiveStyle();
+		if (s.has_bg) {
+			D2D1_RECT_F bgRect = D2D1::RectF(
+				x + s.margin.left, y + s.margin.top,
+				x + w - s.margin.right, y + h - s.margin.bottom);
+			D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(bgRect, s.radius, s.radius);
+			ctx.bgBrush->SetColor(s.bg);
+			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+		}
 		if (ctx.appIcon) {
-			float iconSize = h * 0.8f; // STATIC: icon size is 80% of taskbar height
-			float offX = x + (w - iconSize) / 2.0f;
-			float offY = y + (h - iconSize) / 2.0f;
+			float availableH = h - s.margin.top - s.margin.bottom;
+			float iconSize = availableH * 0.8f;
+			float contentX = x + s.margin.left + s.padding.left;
+			float contentW = w - s.margin.left - s.margin.right - s.padding.left - s.padding.right;
+			float offX = contentX + (contentW - iconSize) / 2.0f;
+			float offY = y + s.margin.top + (availableH - iconSize) / 2.0f;
+
 			D2D1_RECT_F dest = D2D1::RectF(offX, offY, offX + iconSize, offY + iconSize);
 			ctx.rt->DrawBitmap(ctx.appIcon, dest);
 		}
@@ -357,5 +430,85 @@ public:
 			D2D1::RectF(x, y, x + w, y + h),
 			ctx.textBrush
 		);
+	}
+};
+
+class CustomModule : public Module
+{
+public:
+	CustomModule(const ModuleConfig &cfg) : Module(cfg) {}
+
+	float GetContentWidth(RenderContext &ctx) override
+	{
+		float width = 0.0f;
+		if (!config.icon.empty()) {
+			width += ctx.textFormat->GetFontSize();
+			if (!config.format.empty() && config.format != " ") width += 8.0f;
+		}
+		// Measure Text
+		if (!config.format.empty() && config.format != " ") {
+			std::wstring text(config.format.begin(), config.format.end());
+			IDWriteTextLayout *layout = nullptr;
+			ctx.writeFactory->CreateTextLayout(text.c_str(), (UINT32)text.length(), ctx.textFormat, 1000.0f, 1000.0f, &layout);
+			DWRITE_TEXT_METRICS metrics;
+			layout->GetMetrics(&metrics);
+			width += metrics.width;
+			layout->Release();
+		}
+
+		width += config.baseStyle.padding.left + config.baseStyle.padding.right;
+		width += config.baseStyle.margin.left + config.baseStyle.margin.right;
+
+		return width;
+	}
+
+	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
+	{
+		Style s = GetEffectiveStyle();
+		if (s.has_bg) {
+			D2D1_RECT_F bgRect = D2D1::RectF(
+				x + s.margin.left,
+				y + s.margin.top,
+				x + w - s.margin.right,
+				y + h - s.margin.bottom
+			);
+			D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(bgRect, s.radius, s.radius);
+			ctx.bgBrush->SetColor(s.bg);
+			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+		}
+		float cursorX = x + s.margin.left + s.padding.left;
+
+		if (!config.icon.empty()) {
+			std::wstring iconText = ParseIconString(config.icon);
+			float iconSize = ctx.textFormat->GetFontSize();
+			D2D1_RECT_F iconRect = D2D1::RectF(
+				cursorX,
+				y + s.margin.top + s.padding.top,
+				cursorX + iconSize,
+				y + h - s.margin.bottom - s.padding.bottom);
+			ctx.textBrush->SetColor(s.fg);
+			ctx.rt->DrawTextW(iconText.c_str(), (UINT32)iconText.length(), ctx.textFormat, iconRect, ctx.textBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+			cursorX += iconSize;
+			if (!config.format.empty() && config.format != " ") cursorX += 8.0f;
+		}
+		if (!config.format.empty() && config.format != " ") {
+			std::wstring text(config.format.begin(), config.format.end());
+			D2D1_RECT_F textRect = D2D1::RectF(
+				cursorX,
+				y + s.margin.top + s.padding.top,
+				x + w - s.margin.right - s.padding.right,
+				y + h - s.margin.bottom - s.padding.bottom);
+			ctx.textBrush->SetColor(s.fg);
+			ctx.rt->DrawTextW(text.c_str(), (UINT32)text.length(), ctx.textFormat, textRect, ctx.textBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+		}
+	}
+private:
+	std::wstring ParseIconString(const std::string &input)
+	{
+		if (input.empty()) return L"";
+		int size_needed = MultiByteToWideChar(CP_UTF8, 0, &input[0], (int)input.size(), NULL, 0);
+		std::wstring wstr(size_needed, 0);
+		MultiByteToWideChar(CP_UTF8, 0, &input[0], (int)input.size(), &wstr[0], size_needed);
+		return wstr;
 	}
 };

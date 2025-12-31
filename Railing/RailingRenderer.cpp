@@ -102,6 +102,36 @@ RailingRenderer::~RailingRenderer()
     if (pWriteFactory) pWriteFactory->Release();
 }
 
+void RailingRenderer::Reload()
+{
+	ThemeConfig newTheme = ThemeLoader::Load("config.json");
+	this->theme = newTheme;
+    for (Module *m : leftModules) delete m;
+	for (Module *m : centerModules) delete m;
+	for (Module *m : rightModules) delete m;
+	leftModules.clear();
+	centerModules.clear();
+	rightModules.clear();
+    for (const auto &id : theme.layout.left) {
+        Module *m = ModuleFactory::Create(id, theme);
+        if (m) leftModules.push_back(m);
+    }
+    for (const auto &id : theme.layout.center) {
+        Module *m = ModuleFactory::Create(id, theme);
+        if (m) centerModules.push_back(m);
+    }
+    for (const auto &id : theme.layout.right) {
+        Module *m = ModuleFactory::Create(id, theme);
+        if (m) rightModules.push_back(m);
+    }
+	UpdateBlurRegion();
+    if (theme.global.blur && theme.global.background.a < 1.0f) {
+		EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
+    }
+
+    Resize();
+}
+
 void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWindow, std::vector<Dock::ClickTarget> &outTargets)
 {
     if (!pRenderTarget) return;
@@ -115,7 +145,6 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     pRenderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
     RenderContext ctx;
 
-    ThemeConfig theme = ThemeLoader::Load("config.json");
     ctx.dpi = GetDpiForWindow(hwnd);
 	float scale = (float)ctx.dpi / 96.0f;
     RECT rc; GetClientRect(hwnd, &rc);
@@ -291,7 +320,7 @@ void RailingRenderer::UpdateBlurRegion()
 
 void RailingRenderer::EnableBlur(HWND hwnd, DWORD nColor) {
     // Force 8px Rounding for the blur surface
-    DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUND;
+    DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_DONOTROUND;
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 
     // Windows 10 Fallback (Windows 11 is too milky)

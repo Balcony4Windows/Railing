@@ -69,7 +69,6 @@ void TrayFlyout::Toggle(RECT iconRect) {
             dummy.hIcon = LoadIcon(NULL, IDI_APPLICATION);
             currentIcons.push_back(dummy);
         }
-
         int iconSize = 24;
         int padding = 10;
         int cols = 3;
@@ -81,23 +80,18 @@ void TrayFlyout::Toggle(RECT iconRect) {
         MONITORINFO mi = { sizeof(mi) };
         GetMonitorInfo(hMonitor, &mi);
 
-        int gap = 8;
-        bool isBottom = iconRect.bottom > (mi.rcWork.bottom - 100);
+        int gap = 12;
         targetX = iconRect.left + ((iconRect.right - iconRect.left) / 2) - (width / 2);
-        if (isBottom) {
+        if (targetX < mi.rcWork.left + gap) targetX = mi.rcWork.left + gap;
+        if (targetX + width > mi.rcWork.right - gap) targetX = mi.rcWork.right - width - gap;
+        targetY = iconRect.bottom + gap;
+
+        if (targetY + height > mi.rcWork.bottom) {
             targetY = iconRect.top - height - gap;
         }
-        else {
-            targetY = iconRect.bottom + gap;
-        }
-
-        if (targetX < mi.rcWork.left + gap) targetX = mi.rcWork.left + gap;
-        if (targetX + width > mi.rcWork.right - gap) targetX = mi.rcWork.right - gap;
-        if (targetY < mi.rcWork.top + gap) targetY = mi.rcWork.top + gap;
-        if (targetY + height > mi.rcWork.bottom - gap) targetY = mi.rcWork.bottom - gap;
         animState = AnimationState::Entering;
         currentAlpha = 0.0f;
-        currentOffset = 20.0f; // Slide distance
+        currentOffset = 20.0f;
         lastAnimTime = now;
         SetWindowPos(hwnd, HWND_TOPMOST, targetX, targetY + (int)currentOffset, width, height, SWP_SHOWWINDOW | SWP_NOACTIVATE);
         SetForegroundWindow(hwnd);

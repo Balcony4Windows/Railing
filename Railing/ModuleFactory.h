@@ -14,6 +14,7 @@ class ModuleFactory
 		}
 		ModuleConfig cfg = theme.modules.at(name);
 
+		if (cfg.type == "custom") return new CustomModule(cfg);
 		if (cfg.type == "clock") return new ClockModule(cfg);
 		if (cfg.type == "workspaces") return new WorkspacesModule(cfg);
 		if (cfg.type == "cpu") return new CpuModule(cfg);

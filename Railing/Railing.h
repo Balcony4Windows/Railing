@@ -35,6 +35,9 @@ public:
 	HWND hwndBar = nullptr;
 	TooltipHandler tooltips;
 
+	FILETIME lastConfigWriteTime = { 0 };
+	void CheckForConfigUpdate();
+
 	bool Initialize(HINSTANCE hInstance);
 	void RunMessageLoop();
 	BOOL IsAppWindow(HWND hwnd);

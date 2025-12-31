@@ -8,6 +8,7 @@ public:
 	float width = 0.0f;
 	float height = 0.0f;
 	D2D1_RECT_F cachedRect = {};
+	bool isHovered = false;
 
 	Module(const ModuleConfig &cfg) : config(cfg) {}
 	virtual ~Module() {};
@@ -38,7 +39,45 @@ public:
 	/// </summary>
 	/// <param name="ctx">Context</param>
 	void CalculateWidth(RenderContext &ctx);
-protected:
+
+	/// <summary>
+	/// Helper method to get effective style (base + hover)
+	/// </summary>
+	/// <returns>style of *this* module</returns>
+	Style GetEffectiveStyle() {
+		Style s = config.baseStyle;
+		if (isHovered && config.states.count("hover")) {
+			s = s.Merge(config.states.at("hover"));
+		}
+		return s;
+	}
+
+	void DrawModuleBackground(RenderContext &ctx, D2D1_RECT_F rect, const Style &s) {
+		if (!s.has_bg && !s.has_border) return;
+		D2D1_RECT_F drawRect = D2D1::RectF(
+			rect.left + s.margin.left,
+			rect.top + s.margin.top,
+			rect.right - s.margin.right,
+			rect.bottom - s.margin.bottom
+		);
+		D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(drawRect, s.radius, s.radius);
+		if (s.has_bg) {
+			ctx.bgBrush->SetColor(s.bg);
+			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+		}
+		if (s.has_border) {
+			float strokeHalf = s.borderWidth / 2.0f;
+			D2D1_ROUNDED_RECT borderShape = rounded;
+			borderShape.rect.left += strokeHalf;
+			borderShape.rect.top += strokeHalf;
+			borderShape.rect.right -= strokeHalf;
+			borderShape.rect.bottom -= strokeHalf;
+
+			ctx.borderBrush->SetColor(s.borderColor);
+			ctx.rt->DrawRoundedRectangle(borderShape, ctx.borderBrush, s.borderWidth);
+		}
+	}
+
 	/// <summary>
 	/// Child classes implement this to draw text/icons.
 	/// </summary>

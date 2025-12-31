@@ -19,6 +19,31 @@ Railing::~Railing() = default;
 
 Railing *Railing::instance = nullptr;
 
+void Railing::CheckForConfigUpdate()
+{
+	WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+	wchar_t exePath[MAX_PATH];
+	GetModuleFileNameW(NULL, exePath, MAX_PATH);
+	std::wstring path(exePath);
+	path = path.substr(0, path.find_last_of(L"\\/"));
+	std::wstring fullPath = path + L"\\config.json";
+    if (GetFileAttributesExW(fullPath.c_str(), GetFileExInfoStandard, &fileInfo)) {
+        if (lastConfigWriteTime.dwLowDateTime == 0 && lastConfigWriteTime.dwHighDateTime == 0) {
+            lastConfigWriteTime = fileInfo.ftLastWriteTime;
+            return;
+        }
+        if (CompareFileTime(&lastConfigWriteTime, &fileInfo.ftLastWriteTime) != 0) {
+            lastConfigWriteTime = fileInfo.ftLastWriteTime;
+            if (renderer) renderer->Reload();
+
+			UnregisterAppBar(hwndBar); // Re-register for size/position changes
+            RegisterAppBar(hwndBar);
+			UpdateAppBarPosition(hwndBar);
+			InvalidateRect(hwndBar, NULL, FALSE);
+        }
+	}
+}
+
 bool Railing::Initialize(HINSTANCE hInstance)
 {
     SetThreadDescription(GetCurrentThread(), L"Railing_MainUI");
@@ -30,10 +55,11 @@ bool Railing::Initialize(HINSTANCE hInstance)
     gpuStats.Initialize();
 
     ThemeConfig tempConfig = ThemeLoader::Load("config.json");
-	if (tempConfig.global.blur) tempConfig.global.radius = 8.0f; // This is fixed by Windows :(
+	if (tempConfig.global.blur) tempConfig.global.radius = 1.0f; // This is fixed by Windows :(
     hwndBar = CreateBarWindow(hInstance, tempConfig);
     if (!hwndBar) return false;
     tooltips.Initialize(hwndBar);
+	CheckForConfigUpdate(); // Initial load
     RegisterAppBar(hwndBar);
     UpdateAppBarPosition(hwndBar);
 
@@ -251,11 +277,49 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     (LONG)(r.right * scale), (LONG)(r.bottom * scale)
                 };
                 if (PtInRect(&phys, pt)) {
-                    *outRect = r;
+                    if (outRect) *outRect = r;
                     return true;
                 }
                 return false;
                 };
+
+            bool needsRepaint = false;
+            for (auto const &[id, cfg] : self->renderer->theme.modules) {
+                Module *m = self->renderer->GetModule(id);
+                if (!m) continue;
+
+                bool isOver = IsHovering(id.c_str(), nullptr);
+
+                if (m->config.type == "workspaces") {
+                    WorkspacesModule *ws = (WorkspacesModule *)m;
+                    int newHoverIdx = -1;
+                    if (isOver) {
+                        D2D1_RECT_F rectF = ws->cachedRect;
+                        float fullItemSize = ws->itemWidth + ws->itemPadding;
+                        std::string pos = self->renderer->theme.global.position;
+                        if (pos == "left" || pos == "right") {
+                            float localY = ((float)pt.y / scale) - rectF.top;
+                            newHoverIdx = (int)(localY / fullItemSize);
+                        }
+                        else {
+                            float localX = ((float)pt.x / scale) - rectF.left;
+                            newHoverIdx = (int)(localX / fullItemSize);
+                        }
+                        if (newHoverIdx < 0 || newHoverIdx >= ws->count) newHoverIdx = -1;
+                    }
+                    if (ws->hoveredIndex != newHoverIdx) {
+                        ws->SetHoveredIndex(newHoverIdx);
+                        needsRepaint = true;
+                    }
+                }
+                else {
+                    if (m->isHovered != isOver) {
+                        m->isHovered = isOver;
+                        needsRepaint = true;
+                    }
+                }
+            }
+            if (needsRepaint) InvalidateRect(hwnd, NULL, FALSE);
             for (const auto &target : self->windowTargets) {
                 if (PtInRect(&target.rect, pt)) {
                     wchar_t title[256];
@@ -323,6 +387,17 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             self->tooltips.Hide();
             self->lastTooltipText.clear();
             self->isTrackingMouse = false;
+            if (self->renderer) {
+                for (Module *m : self->renderer->leftModules) { m->isHovered = false; }
+                for (Module *m : self->renderer->centerModules) { m->isHovered = false; }
+                for (Module *m : self->renderer->rightModules) { m->isHovered = false; }
+
+                // Specific reset for workspaces
+                Module *ws = self->renderer->GetModule("workspaces");
+                if (ws) ((WorkspacesModule *)ws)->SetHoveredIndex(-1);
+
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
         }
         break;
     case WM_LBUTTONDOWN:
@@ -332,93 +407,127 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         int mx = GET_X_LPARAM(lParam);
         int my = GET_Y_LPARAM(lParam);
         POINT pt = { mx, my };
+
         float dpi = (float)GetDpiForWindow(hwnd);
         float scale = dpi / 96.0f;
         RECT barRect;
         GetWindowRect(hwnd, &barRect);
-        auto GetModuleScreenRect = [&](std::string id, RECT *outScreenRect) -> bool {
+        auto IsMouseOverModule = [&](std::string id, RECT *outScreenRect) -> bool {
             D2D1_RECT_F f = self->renderer->GetModuleRect(id);
-            if (f.right == 0.0f) return false;
-            RECT localR = {
-                (LONG)(f.left * scale),
-                (LONG)(f.top * scale),
-                (LONG)(f.right * scale),
-                (LONG)(f.bottom * scale)
-            };
+            if (f.right == 0.0f && f.bottom == 0.0f) return false;
 
+            RECT localR = {
+                (LONG)(f.left * scale), (LONG)(f.top * scale),
+                (LONG)(f.right * scale), (LONG)(f.bottom * scale)
+            };
             if (outScreenRect) {
                 outScreenRect->left = barRect.left + localR.left;
                 outScreenRect->top = barRect.top + localR.top;
                 outScreenRect->right = barRect.left + localR.right;
                 outScreenRect->bottom = barRect.top + localR.bottom;
             }
+
             return PtInRect(&localR, pt);
             };
 
         bool handled = false;
-        RECT targetRect;
+        RECT targetRect = { 0 };
 
-        if (GetModuleScreenRect("app_icon", &targetRect)) {
-            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
-            handled = true;
-        }
-        // Workspaces
-        else if (GetModuleScreenRect("workspaces", &targetRect)) {
-            Module *m = self->renderer->GetModule("workspaces");
-            if (m) {
-                WorkspacesModule *ws = (WorkspacesModule *)m;
-                D2D1_RECT_F rectF = ws->cachedRect;
-                float fullItemSize = ws->itemWidth + ws->itemPadding;
+        for (auto const &[id, cfg] : self->renderer->theme.modules) {
 
-                int index = 0;
-                std::string pos = self->renderer->theme.global.position;
-                if (pos == "left" || pos == "right") {
-                    float localY = ((float)pt.y / scale) - rectF.top;
-                    index = (int)(localY / fullItemSize);
+            if (IsMouseOverModule(id, &targetRect)) {
+                Module *m = self->renderer->GetModule(id);
+                if (!m) continue;
+
+                std::string type = m->config.type;
+                if (type == "workspaces") {
+                    WorkspacesModule *ws = (WorkspacesModule *)m;
+                    D2D1_RECT_F rectF = ws->cachedRect;
+                    float fullItemSize = ws->itemWidth + ws->itemPadding;
+                    int index = 0;
+                    std::string pos = self->renderer->theme.global.position;
+
+                    if (pos == "left" || pos == "right") {
+                        float localY = ((float)pt.y / scale) - rectF.top;
+                        index = (int)(localY / fullItemSize);
+                    }
+                    else {
+                        float localX = ((float)pt.x / scale) - rectF.left;
+                        index = (int)(localX / fullItemSize);
+                    }
+
+                    if (index >= 0 && index < ws->count) {
+                        ws->SetActiveIndex(index);
+                        InvalidateRect(hwnd, NULL, FALSE);
+                    }
+                    if (ws->hoveredIndex != index) {
+                        ws->hoveredIndex = index;
+						InvalidateRect(hwnd, NULL, FALSE);
+                    }
+                    handled = true;
                 }
-                else {
-                    float localX = ((float)pt.x / scale) - rectF.left;
-                    index = (int)(localX / fullItemSize);
+                else if (type == "app_icon") {
+                    SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
+                    handled = true;
+                }
+                else if (type == "audio") {
+                    if (self->flyout) self->flyout->Toggle(targetRect);
+                    handled = true;
+                }
+                else if (type == "tray") {
+                    if (!self->trayFlyout) self->trayFlyout = new TrayFlyout(GetModuleHandle(NULL));
+                    self->trayFlyout->Toggle(targetRect);
+                    handled = true;
+                }
+                else if (type == "network") {
+                    ShellExecute(NULL, L"open", L"ms-settings:network", NULL, NULL, SW_SHOWNORMAL);
+                    handled = true;
+                }
+                else if (type == "battery") {
+                    ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
+                    handled = true;
+                }
+                else if (type == "notification") {
+                    INPUT inputs[4] = {};
+                    inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
+                    inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'N';
+                    inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'N'; inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+                    inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = VK_LWIN; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+                    SendInput(4, inputs, sizeof(INPUT));
+                    handled = true;
+                }
+                // --- CUSTOM MODULES ---
+                else if (type == "custom") {
+                    std::string action = m->config.onClick;
+                    if (!action.empty()) {
+                        if (action == "toggle_desktop") {
+                            INPUT inputs[4] = {};
+                            inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
+                            inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'D';
+                            inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'D'; inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+                            inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = VK_LWIN; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+                            SendInput(4, inputs, sizeof(INPUT));
+                        }
+                        else if (action == "toggle_start") {
+                            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
+                        }
+                        else if (action.rfind("exec:", 0) == 0) {
+                            // exec:notepad.exe
+                            std::string cmd = action.substr(5);
+                            std::wstring wcmd(cmd.begin(), cmd.end());
+                            ShellExecuteW(NULL, L"open", wcmd.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                        }
+                        // Add more custom commands here as needed
+                        handled = true;
+                    }
                 }
 
-                if (index >= 0 && index < ws->count) {
-                    ws->SetActiveIndex(index);
-                    InvalidateRect(hwnd, NULL, FALSE);
-                }
+                // If we found a handler, stop searching.
+                if (handled) break;
             }
-            handled = true;
-        }
-        else if (GetModuleScreenRect("audio", &targetRect)) {
-            if (self->flyout) self->flyout->Toggle(targetRect);
-            handled = true;
-        }
-        else if (GetModuleScreenRect("tray", &targetRect)) {
-            if (!self->trayFlyout) self->trayFlyout = new TrayFlyout(GetModuleHandle(NULL));
-            self->trayFlyout->Toggle(targetRect);
-            handled = true;
-        }
-        else if (GetModuleScreenRect("network", &targetRect)) {
-            ShellExecute(NULL, L"open", L"ms-settings:network", NULL, NULL, SW_SHOWNORMAL);
-            handled = true;
-        }
-		else if (GetModuleScreenRect("app_icon", &targetRect)) {
-            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
-            handled = true;
-        }
-        else if (GetModuleScreenRect("battery", &targetRect)) {
-            ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
-            handled = true;
-        }
-        else if (GetModuleScreenRect("notification", &targetRect)) {
-            INPUT inputs[4] = {};
-            inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
-            inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'N';
-            inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'N'; inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-            inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = VK_LWIN; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-            SendInput(4, inputs, sizeof(INPUT));
-            handled = true;
         }
 
+        // 3. Fallback: Window Targets (Taskbar Icons)
         if (!handled) {
             for (const auto &target : self->windowTargets) {
                 if (PtInRect(&target.rect, pt)) {
@@ -435,7 +544,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         return 0;
     }
     case WM_TIMER:
-        if (wParam == 1) if (self) self->UpdateSystemStats();
+        if (wParam == 1 && self) self->UpdateSystemStats();
         return 0;
     case WM_SIZE:
         if (self && self->renderer) {
@@ -514,10 +623,6 @@ void Railing::UpdateSystemStats() {
     if (now - lastCpuUpdate >= GetInterval("cpu", 1000)) { cachedCpuUsage = stats.GetCpuUsage(); lastCpuUpdate = now; needsRepaint = true; }
     if (now - lastRamUpdate >= GetInterval("ram", 1000)) { cachedRamUsage = stats.GetRamUsage(); lastRamUpdate = now; needsRepaint = true; }
 	if (now - lastGpuUpdate >= GetInterval("gpu", 1000)) { cachedGpuTemp = gpuStats.GetGpuTemp(); lastGpuUpdate = now; needsRepaint = true; }
-
-    // In V2 we actually just trigger te renderer to update its modules!
-    // For now, simple repaint is enough.
-
     if (needsRepaint) InvalidateRect(hwndBar, NULL, FALSE);
 }
 
@@ -574,14 +679,10 @@ BOOL Railing::IsAppWindow(HWND hwnd)
 
     wchar_t className[256];
     GetClassName(hwnd, className, 256);
-
     int cloakedVal = 0;
     HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloakedVal, sizeof(cloakedVal));
     if (SUCCEEDED(hr) && cloakedVal != 0) return FALSE;
-
     if (GetWindow(hwnd, GW_OWNER) != NULL && !(style & WS_EX_APPWINDOW)) return FALSE;
-
     if (wcscmp(className, L"Progman") == 0 || wcscmp(className, L"Shell_TrayWnd") == 0) return FALSE;
-
     return TRUE;
 }
