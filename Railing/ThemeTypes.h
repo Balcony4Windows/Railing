@@ -30,8 +30,8 @@ struct Style {
     Padding padding;
     Padding margin;
     std::string font_weight = "normal";
-	float borderWidth = 0.0f;
-	D2D1_COLOR_F borderColor = D2D1::ColorF(0, 0, 0, 0);
+    float borderWidth = 0.0f;
+    D2D1_COLOR_F borderColor = D2D1::ColorF(0, 0, 0, 0);
     bool has_bg = false;
     bool has_fg = false;
     bool has_radius = false;
@@ -67,12 +67,16 @@ struct ModuleConfig {
     std::string id; // e.g., "cpu", "workspaces"
     std::string type; // e.g., "cpu", "group", "clock"
     std::string format; // e.g., "{icon} {vol}%"
-	std::string onClick; // e.g., "open my app"
-	std::string target; // For ping module specifically
-	std::string icon; // icon location or glyph
+    std::string onClick; // e.g., "open my app"
+    std::string target; // For ping module specifically
+    std::string icon; // icon location or glyph
     int interval = 0;
 
     Style baseStyle;
+
+    std::string latitude; /* For weather */
+    std::string longitude;
+    std::string tempFormat = "fahrenheit";
 
     std::vector<std::string> groupModules; // If type == "group"
     std::vector<Threshold> thresholds; // If type == "cpu" or "battery"
@@ -94,6 +98,7 @@ struct ThemeConfig {
         std::string position = "top";
         Padding margin;
         std::string font = "Segoe UI";
+        std::string monitor = "primary";
         float fontSize = 14.0f;
         D2D1_COLOR_F background = D2D1::ColorF(0, 0, 0, 0);
         bool blur = true;

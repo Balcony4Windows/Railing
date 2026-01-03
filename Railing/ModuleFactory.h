@@ -5,8 +5,8 @@
 
 class ModuleFactory
 {
-	public:
-	static Module* Create(const std::string &name, const ThemeConfig &theme)
+public:
+	static Module *Create(const std::string &name, const ThemeConfig &theme)
 	{
 		if (theme.modules.find(name) == theme.modules.end()) {
 			OutputDebugStringA(("Warning: Module ID '" + name + "' not found in config.json\n").c_str());
@@ -15,15 +15,16 @@ class ModuleFactory
 		ModuleConfig cfg = theme.modules.at(name);
 
 		if (cfg.type == "custom") return new CustomModule(cfg);
-		if (cfg.type == "clock") return new ClockModule(cfg);
-		if (cfg.type == "workspaces") return new WorkspacesModule(cfg);
-		if (cfg.type == "cpu") return new CpuModule(cfg);
-		if (cfg.type == "gpu") return new GpuModule(cfg);
-		if (cfg.type == "ram") return new RamModule(cfg);
-		if (cfg.type == "ping") return new PingModule(cfg);
-		if (cfg.type == "app_icon") return new AppIconModule(cfg);
+		else if (cfg.type == "clock") return new ClockModule(cfg);
+		else if (cfg.type == "workspaces") return new WorkspacesModule(cfg);
+		else if (cfg.type == "cpu") return new CpuModule(cfg);
+		else if (cfg.type == "gpu") return new GpuModule(cfg);
+		else if (cfg.type == "ram") return new RamModule(cfg);
+		else if (cfg.type == "ping") return new PingModule(cfg);
+		else if (cfg.type == "weather") { return new WeatherModule(cfg); }
+		else if (cfg.type == "app_icon") return new AppIconModule(cfg);
 
-		if (cfg.type == "group") {
+		else if (cfg.type == "group") {
 			GroupModule *group = new GroupModule(cfg);
 			for (const auto &childName : cfg.groupModules) {
 				Module *child = Create(childName, theme);
@@ -31,9 +32,9 @@ class ModuleFactory
 			}
 			return group;
 		}
-		if (cfg.type == "network" || cfg.type == "audio" || cfg.type == "battery"
+		else if (cfg.type == "network" || cfg.type == "audio" || cfg.type == "battery"
 			|| cfg.type == "tray" || cfg.type == "notification") return new IconModule(cfg);
-			return new IconModule(cfg);
+		return new IconModule(cfg);
 		return nullptr; // UNK
 	}
 };

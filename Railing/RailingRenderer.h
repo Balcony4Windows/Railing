@@ -7,8 +7,8 @@
 
 #include "ThemeTypes.h"
 #include "Module.h"
-#include "Dock.h"
 #include "ThemeLoader.h"
+#include "Types.h"
 
 class RailingRenderer
 {
@@ -16,31 +16,33 @@ public:
     struct SystemStatusData {
         int cpuUsage = 0;
         int ramUsage = 0;
-		int gpuTemp = 0;
+        int gpuTemp = 0;
         float volume = 0.0f;
         float isMuted = false;
     };
     RailingRenderer(HWND hwnd);
     ~RailingRenderer();
 
-	ThemeConfig theme;
-	std::vector<Module *> leftModules;
-	std::vector<Module *> centerModules;
-	std::vector<Module *> rightModules;
+    ThemeConfig theme;
+    std::vector<Module *> leftModules;
+    std::vector<Module *> centerModules;
+    std::vector<Module *> rightModules;
 
-    Dock dock;
     SystemStatusData currentStats;
 
     void Reload();
-    void Draw(const std::vector<WindowInfo> &windows, HWND activeWindow, std::vector<Dock::ClickTarget> &outTargets);
+    void Draw(const std::vector<WindowInfo> &windows, HWND activeWindow);
     void Resize();
     static void EnableBlur(HWND hwnd, DWORD nColor);
     void UpdateBlurRegion();
-    bool HitTest(POINT pt, const std::vector<Dock::ClickTarget> &targets);
+    bool HitTest(POINT pt);
     D2D1_RECT_F GetModuleRect(std::string moduleId);
     Module *GetModule(std::string id);
     RECT GetAppIconRect() { return iconClickRect; }
 
+    ID2D1Factory *GetFactory() const { return pFactory; }
+    IWICImagingFactory *GetWICFactory() const { return pWICFactory; }
+    IDWriteFactory *GetWriteFactory() const { return pWriteFactory; }
     void UpdateStats(const SystemStatusData &data) { currentStats = data; }
 private:
     HWND hwnd;
@@ -48,7 +50,7 @@ private:
     ID2D1Factory *pFactory = nullptr;
     ID2D1HwndRenderTarget *pRenderTarget = nullptr;
     IDWriteFactory *pWriteFactory = nullptr;
-    IDWriteTextFormat *pLargeTextFormat = nullptr;
+    IDWriteTextFormat *pTextFormatBold = nullptr;
     IDWriteTextFormat *pTextFormat = nullptr;
     IDWriteTextFormat *pEmojiFormat = nullptr;
     IDWriteTextFormat *pIconFormat = nullptr;
@@ -60,7 +62,7 @@ private:
 
     ID2D1Bitmap *pAppIcon = nullptr;
     RECT iconClickRect = {};
-	std::map<std::string, D2D1_RECT_F> moduleRects;
+    std::map<std::string, D2D1_RECT_F> moduleRects;
 
     void LoadAppIcon();
     Module *FindModuleRecursive(const std::vector<Module *> &list, const std::string &id);

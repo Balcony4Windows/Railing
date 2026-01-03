@@ -156,46 +156,47 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AppBarRegistration.h" />
+    <ClInclude Include="AppIconModule.h" />
     <ClInclude Include="AudioBackend.h" />
-    <ClInclude Include="Config.h" />
-    <ClInclude Include="CssParser.h" />
-    <ClInclude Include="Dock.h" />
+    <ClInclude Include="ClockModule.h" />
+    <ClInclude Include="CommandExecutor.h" />
+    <ClInclude Include="CpuModule.h" />
+    <ClInclude Include="CustomModule.h" />
+    <ClInclude Include="GpuModule.h" />
     <ClInclude Include="GpuStats.h" />
-    <ClInclude Include="Indicators.h" />
+    <ClInclude Include="GroupModule.h" />
+    <ClInclude Include="IconModule.h" />
     <ClInclude Include="Module.h" />
     <ClInclude Include="ModuleFactory.h" />
     <ClInclude Include="ModulesConcrete.h" />
+    <ClInclude Include="PingModule.h" />
     <ClInclude Include="Railing.h" />
     <ClInclude Include="RailingRenderer.h" />
+    <ClInclude Include="RamModule.h" />
     <ClInclude Include="RenderContext.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="Style.h" />
     <ClInclude Include="SystemStats.h" />
-    <ClInclude Include="ThemeLoader.h" />
     <ClInclude Include="ThemeTypes.h" />
     <ClInclude Include="TooltipHandler.h" />
     <ClInclude Include="TrayFlyout.h" />
-    <ClInclude Include="TrayManager.h" />
     <ClInclude Include="Types.h" />
     <ClInclude Include="VolumeFlyout.h" />
-    <ClInclude Include="Widgets.h" />
+    <ClInclude Include="WeatherModule.h" />
     <ClInclude Include="WindowManager.h" />
+    <ClInclude Include="WorkspacesModule.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AppBarRegistration.cpp" />
-    <ClCompile Include="Config.cpp" />
-    <ClCompile Include="Dock.cpp" />
-    <ClCompile Include="Indicators.cpp" />
+    <ClCompile Include="CommandExecutor.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Module.cpp" />
     <ClCompile Include="Railing.cpp" />
     <ClCompile Include="RailingRenderer.cpp" />
     <ClCompile Include="SystemStats.cpp" />
+    <ClCompile Include="ThemeLoader.h" />
     <ClCompile Include="TooltipHandler.cpp" />
     <ClCompile Include="TrayFlyout.cpp" />
-    <ClCompile Include="TrayManager.cpp" />
     <ClCompile Include="VolumeFlyout.cpp" />
-    <ClCompile Include="Widgets.cpp" />
     <ClCompile Include="WindowManager.cpp" />
   </ItemGroup>
   <ItemGroup>

@@ -9,9 +9,23 @@ public:
 	float height = 0.0f;
 	D2D1_RECT_F cachedRect = {};
 	bool isHovered = false;
+	IDWriteTextLayout *cachedLayout = nullptr;
+	std::wstring cachedTextVal = L"";
 
 	Module(const ModuleConfig &cfg) : config(cfg) {}
-	virtual ~Module() {};
+	virtual ~Module() { if (cachedLayout) cachedLayout->Release(); };
+
+	IDWriteTextLayout *GetLayout(RenderContext &ctx, const std::wstring &text, IDWriteTextFormat *format) {
+		if (!cachedLayout || text != cachedTextVal) {
+			if (cachedLayout) { cachedLayout->Release(); cachedLayout = nullptr; }
+			cachedTextVal = text;
+			ctx.writeFactory->CreateTextLayout(
+				text.c_str(), (UINT32)text.length(),
+				format, 1000.0f, 1000.0f, &cachedLayout
+			);
+		}
+		return cachedLayout;
+	}
 
 	/// <summary>
 	/// Update Logic (Run ever frame, e.g. check CPU usage)
@@ -87,4 +101,43 @@ public:
 	/// <param name="w">Width</param>
 	/// <param name="h">Height</param>
 	virtual void RenderContent(RenderContext &ctx, float x, float y, float w, float h) = 0;
+
+	// Helper to format wider characters
+	static inline std::wstring Utf8ToWide(const std::string &str) {
+		if (str.empty()) return L"";
+		int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+		std::wstring wstrTo(size_needed, 0);
+		MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+		return wstrTo;
+	}
+
+	// Helper to format output strings
+	static inline std::wstring FormatOutput(std::string fmt, std::string token, std::wstring value) {
+		if (fmt.empty()) return value;
+
+		if (fmt.empty()) return L"";
+		int size_needed = MultiByteToWideChar(CP_UTF8, 0, &fmt[0], (int)fmt.size(), NULL, 0);
+		std::wstring wfmt(size_needed, 0);
+		MultiByteToWideChar(CP_UTF8, 0, &fmt[0], (int)fmt.size(), &wfmt[0], size_needed);
+
+		std::wstring wtoken(token.begin(), token.end());
+
+		size_t pos = wfmt.find(wtoken);
+		if (pos != std::wstring::npos) {
+			wfmt.replace(pos, wtoken.length(), value);
+		}
+		return wfmt;
+	}
+
+	// Helper to draw a progress bar background
+	static inline void DrawProgressBar(RenderContext &ctx, float x, float y, float w, float h, float pct, const D2D1_COLOR_F color)
+	{
+		if (pct > 0.0f) {
+			if (pct > 1.0f) pct = 1.0f;
+			D2D1_RECT_F fillRect = D2D1::RectF(x, y + h - 4.0f, x + (w * pct), y + h);
+			D2D1_ROUNDED_RECT roundedBar = D2D1::RoundedRect(fillRect, 2.0f, 2.0f);
+			ctx.bgBrush->SetColor(color);
+			ctx.rt->FillRoundedRectangle(roundedBar, ctx.bgBrush);
+		}
+	}
 };

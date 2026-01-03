@@ -4,7 +4,7 @@
 #include <sstream>
 #include "Windows.h"
 
-class ThemeLoader 
+class ThemeLoader
 {
 public:
 	static ThemeConfig Load(const std::string &relativeFilename)
@@ -42,20 +42,27 @@ public:
 			auto &g = j["global"];
 			config.global.height = g.value("height", 40);
 			config.global.position = g.value("position", "top");
+			config.global.monitor = g.value("monitor", "primary");
 			config.global.font = g.value("font", "Segoe UI");
 			config.global.fontSize = g.value("font_size", 14.0f);
-			if (g.contains("margin")) config.global.margin = Padding::FromJSON(g["margin"]);
-			if (g.contains("background")) config.global.background = ParseColor(g["background"]);
-			if (g.contains("blur")) config.global.blur = g.value("blur", true);
-			if (g.contains("radius")) config.global.radius = g.value("radius", 0.0f);
-			if (g.contains("border_width")) config.global.borderWidth = g.value("border_width", 0.0f);
-			if (g.contains("border_color")) config.global.borderColor = ParseColor(g["border_color"]);
+			config.global.blur = g.value("blur", true);
+
 			if (g.contains("animation")) {
 				auto &a = g["animation"];
 				config.global.animation.enabled = a.value("enabled", true);
 				config.global.animation.duration = a.value("duration", 300);
 				config.global.animation.startScale = a.value("start_scale", 0.1f);
 				config.global.animation.fps = a.value("fps", 60);
+			}
+			if (g.contains("style")) {
+				Style s = ParseStyle(g["style"]);
+				if (s.has_bg) config.global.background = s.bg;
+				if (s.has_radius) config.global.radius = s.radius;
+				if (s.has_margin) config.global.margin = s.margin;
+				if (s.has_border) {
+					config.global.borderWidth = s.borderWidth;
+					config.global.borderColor = s.borderColor;
+				}
 			}
 		}
 		if (j.contains("layout")) {
@@ -74,6 +81,9 @@ public:
 			mod.format = val.value("format", "");
 			mod.interval = val.value("interval", 0);
 			mod.orientation = val.value("orientation", "horizontal");
+			mod.latitude = val.value("latitude", "");
+			mod.longitude = val.value("longitude", "");
+			mod.tempFormat = val.value("temp_format", "fahrenheit");
 			mod.baseStyle = Style();
 			if (val.contains("target")) mod.target = val["target"].get<std::string>();
 			if (val.contains("on_click")) mod.onClick = val["on_click"].get<std::string>();
@@ -114,7 +124,6 @@ private:
 		float b = (val & 0xFF) / 255.0f;
 		return D2D1::ColorF(r, g, b, a);
 	}
-	// Inside ThemeLoader::ParseStyle
 
 	static Style ParseStyle(const nlohmann::json &j)
 	{

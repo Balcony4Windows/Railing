@@ -2,24 +2,31 @@
 #include <Windows.h>
 #include <d2d1.h>
 #include <vector>
-#include "TrayManager.h"
+#include <wincodec.h>
+#include "ThemeTypes.h"
+
+struct TrayIconData {
+    HICON hIcon;
+    RECT rect;
+    // Note: We don't store D2D1Bitmap here directly to keep data/render separation clean, 
+    // but you could. I'll use a parallel vector in the class.
+};
 
 class TrayFlyout {
 public:
-    TrayFlyout(HINSTANCE hInst);
+    TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, const ThemeConfig &config);
     ~TrayFlyout();
 
     void Toggle(RECT iconRect);
-    bool IsVisible();
-
+    void Draw();
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-    void Draw();
+
     void OnClick(int x, int y, bool isRightClick);
 
     HWND hwnd = nullptr;
-    TrayManager backend;
-    std::vector<TrayIconData> currentIcons;
+    ThemeConfig::Global style;
+    void UpdateBitmapCache();
 
     // Animation support
     void UpdateAnimation();
@@ -29,13 +36,17 @@ private:
     float currentOffset = 0.0f;
     ULONGLONG lastAnimTime = 0;
     ULONGLONG lastAutoCloseTime = 0; // Debounce
-    int targetX = 0;
-    int targetY = 0;
+    int targetX = 0, targetY = 0;
 
     ID2D1Factory *pFactory = nullptr;
+    IWICImagingFactory *pWICFactory = nullptr;
     ID2D1HwndRenderTarget *pRenderTarget = nullptr;
     ID2D1SolidColorBrush *pBgBrush = nullptr;
     ID2D1SolidColorBrush *pHoverBrush = nullptr;
+    ID2D1SolidColorBrush *pBorderBrush = nullptr;
+
+    std::vector<TrayIconData> currentIcons;
+    std::vector<ID2D1Bitmap *> cachedBitmaps;
 
     int hoverIndex = -1;
 };

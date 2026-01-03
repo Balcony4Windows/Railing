@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include "AudioBackend.h"
+#include "ThemeTypes.h"
 
 struct AudioDeviceInfo {
     std::wstring name;
@@ -13,7 +14,7 @@ struct AudioDeviceInfo {
 
 class VolumeFlyout {
 public:
-    VolumeFlyout(HINSTANCE hInst);
+    VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, const ThemeConfig &config);
     ~VolumeFlyout();
     AudioBackend audio;
     HWND hwnd = nullptr;
@@ -35,13 +36,18 @@ private:
     std::vector<AudioDeviceInfo> devices;
 
     // D2D Resources
-    static ID2D1Factory *pFactory;
+    ID2D1Factory *pFactory; // shared resources
+    IDWriteFactory *pWriteFactory;
+
     ID2D1HwndRenderTarget *pRenderTarget = nullptr;
     ID2D1SolidColorBrush *pBgBrush = nullptr;
     ID2D1SolidColorBrush *pFgBrush = nullptr;
     ID2D1SolidColorBrush *pAccentBrush = nullptr;
-    static IDWriteFactory *pWriteFactory;
-    static IDWriteTextFormat *pTextFormat;
+    ID2D1SolidColorBrush *pBorderBrush = nullptr;
+    IDWriteTextFormat *pTextFormat;
+
+    ThemeConfig::Global style;
+    HINSTANCE hInst;
 
     // State
     bool isHoveringOpenButton = false;

@@ -8,25 +8,27 @@
 #include <Psapi.h>
 #include "ModulesConcrete.h"
 #include "ThemeLoader.h"
+#include "CommandExecutor.h"
 
 #pragma comment(lib, "dwmapi.lib") 
 #pragma comment(lib, "d2d1")
 #pragma comment(lib, "shell32.lib")
 
 Railing::Railing()
-{}
+{
+}
 Railing::~Railing() = default;
 
 Railing *Railing::instance = nullptr;
 
 void Railing::CheckForConfigUpdate()
 {
-	WIN32_FILE_ATTRIBUTE_DATA fileInfo;
-	wchar_t exePath[MAX_PATH];
-	GetModuleFileNameW(NULL, exePath, MAX_PATH);
-	std::wstring path(exePath);
-	path = path.substr(0, path.find_last_of(L"\\/"));
-	std::wstring fullPath = path + L"\\config.json";
+    WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    std::wstring path(exePath);
+    path = path.substr(0, path.find_last_of(L"\\/"));
+    std::wstring fullPath = path + L"\\config.json";
     if (GetFileAttributesExW(fullPath.c_str(), GetFileExInfoStandard, &fileInfo)) {
         if (lastConfigWriteTime.dwLowDateTime == 0 && lastConfigWriteTime.dwHighDateTime == 0) {
             lastConfigWriteTime = fileInfo.ftLastWriteTime;
@@ -36,12 +38,12 @@ void Railing::CheckForConfigUpdate()
             lastConfigWriteTime = fileInfo.ftLastWriteTime;
             if (renderer) renderer->Reload();
 
-			UnregisterAppBar(hwndBar); // Re-register for size/position changes
+            UnregisterAppBar(hwndBar); // Re-register for size/position changes
             RegisterAppBar(hwndBar);
-			UpdateAppBarPosition(hwndBar);
-			InvalidateRect(hwndBar, NULL, FALSE);
+            UpdateAppBarPosition(hwndBar);
+            InvalidateRect(hwndBar, NULL, FALSE);
         }
-	}
+    }
 }
 
 bool Railing::Initialize(HINSTANCE hInstance)
@@ -55,11 +57,11 @@ bool Railing::Initialize(HINSTANCE hInstance)
     gpuStats.Initialize();
 
     ThemeConfig tempConfig = ThemeLoader::Load("config.json");
-	if (tempConfig.global.blur) tempConfig.global.radius = 1.0f; // This is fixed by Windows :(
+    if (tempConfig.global.blur) tempConfig.global.radius = 1.0f; // This is fixed by Windows :(
     hwndBar = CreateBarWindow(hInstance, tempConfig);
     if (!hwndBar) return false;
     tooltips.Initialize(hwndBar);
-	CheckForConfigUpdate(); // Initial load
+    CheckForConfigUpdate(); // Initial load
     RegisterAppBar(hwndBar);
     UpdateAppBarPosition(hwndBar);
 
@@ -71,7 +73,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
     int centerY = targetRect.top + (finalH / 2);
     SendMessage(hwndBar, WM_PAINT, 0, 0);
     ShowWindow(hwndBar, SW_SHOW);
-	auto &anim = tempConfig.global.animation;
+    auto &anim = tempConfig.global.animation;
     if (anim.enabled && anim.duration > 0) { // Calculate timing based on FPS
         int frameDelay = 1000 / anim.fps;
         int totalSteps = anim.duration / frameDelay;
@@ -104,7 +106,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
     UINT shellHookMsg = RegisterWindowMessage(L"SHELLHOOK");
     shellMsgId = shellHookMsg;
 
-	RegisterHotKey(hwndBar, HOTKEY_KILL_THIS, MOD_CONTROL | MOD_SHIFT, 0x51); // Ctrl + Shft + Q to kill explorer (for testing)
+    RegisterHotKey(hwndBar, HOTKEY_KILL_THIS, MOD_CONTROL | MOD_SHIFT, 0x51); // Ctrl + Shft + Q to kill explorer (for testing)
 
     // Listen for name changes
     titleHook = SetWinEventHook(
@@ -114,9 +116,12 @@ bool Railing::Initialize(HINSTANCE hInstance)
 
     SetTimer(hwndBar, 1, 500, NULL);
 
-    flyout = new VolumeFlyout(hInstance);
+    flyout = new VolumeFlyout(hInstance,
+        renderer->GetFactory(),
+        renderer->GetWriteFactory(),
+        renderer->theme);
     flyout->audio.EnsureInitialized(hwndBar);
-    trayFlyout = new TrayFlyout(hInstance);
+    trayFlyout = new TrayFlyout(hInstance, renderer->GetFactory(), renderer->GetWICFactory(), renderer->theme);
 
 
     ShowWindow(hwndBar, SW_SHOW);
@@ -205,6 +210,7 @@ void Railing::RunMessageLoop()
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+
 }
 
 LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -240,7 +246,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         if (wParam == HOTKEY_KILL_THIS && self) {
             DestroyWindow(hwnd);
         }
-		return 0;
+        return 0;
     case WM_RAILING_CMD:
         if (wParam == CMD_SWITCH_WORKSPACE && self && self->renderer) {
             Module *m = self->renderer->GetModule("workspaces");
@@ -266,9 +272,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
             std::wstring newText = L"";
             D2D1_RECT_F newRectF = { 0 };
-            bool hitFound = false;
-
-            // Helper: Checks if mouse is over a module ID
+            Module *hitModule = nullptr;
             auto IsHovering = [&](const char *id, D2D1_RECT_F *outRect) -> bool {
                 D2D1_RECT_F r = self->renderer->GetModuleRect(id);
                 if (r.right == 0.0f && r.bottom == 0.0f) return false;
@@ -285,25 +289,31 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 };
 
             bool needsRepaint = false;
+
             for (auto const &[id, cfg] : self->renderer->theme.modules) {
                 Module *m = self->renderer->GetModule(id);
                 if (!m) continue;
 
-                bool isOver = IsHovering(id.c_str(), nullptr);
+                D2D1_RECT_F currentRect;
+                bool isOver = IsHovering(id.c_str(), &currentRect);
+
+                if (isOver) {
+                    hitModule = m;
+                    newRectF = currentRect;
+                }
 
                 if (m->config.type == "workspaces") {
                     WorkspacesModule *ws = (WorkspacesModule *)m;
                     int newHoverIdx = -1;
                     if (isOver) {
-                        D2D1_RECT_F rectF = ws->cachedRect;
                         float fullItemSize = ws->itemWidth + ws->itemPadding;
                         std::string pos = self->renderer->theme.global.position;
                         if (pos == "left" || pos == "right") {
-                            float localY = ((float)pt.y / scale) - rectF.top;
+                            float localY = ((float)pt.y / scale) - currentRect.top;
                             newHoverIdx = (int)(localY / fullItemSize);
                         }
                         else {
-                            float localX = ((float)pt.x / scale) - rectF.left;
+                            float localX = ((float)pt.x / scale) - currentRect.left;
                             newHoverIdx = (int)(localX / fullItemSize);
                         }
                         if (newHoverIdx < 0 || newHoverIdx >= ws->count) newHoverIdx = -1;
@@ -320,55 +330,36 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     }
                 }
             }
+
             if (needsRepaint) InvalidateRect(hwnd, NULL, FALSE);
-            for (const auto &target : self->windowTargets) {
-                if (PtInRect(&target.rect, pt)) {
-                    wchar_t title[256];
-                    GetWindowTextW(target.hwnd, title, 256);
-                    newText = title;
-                    newRectF = D2D1::RectF(
-                        (float)target.rect.left / scale, (float)target.rect.top / scale,
-                        (float)target.rect.right / scale, (float)target.rect.bottom / scale
-                    );
-                    hitFound = true;
-                    break;
-                }
-            }
-            if (!hitFound) {
-                D2D1_RECT_F r;
-                if (IsHovering("audio", &r)) { newText = L"Volume"; newRectF = r; hitFound = true; }
-                else if (IsHovering("network", &r)) { newText = L"Network"; newRectF = r; hitFound = true; }
-                else if (IsHovering("battery", &r)) { newText = L"Battery"; newRectF = r; hitFound = true; }
-                else if (IsHovering("cpu", &r)) { newText = L"CPU Usage"; newRectF = r; hitFound = true; }
-                else if (IsHovering("gpu", &r)) { newText = L"GPU Temperature"; newRectF = r; hitFound = true; }
-                else if (IsHovering("ram", &r)) { newText = L"RAM Usage"; newRectF = r; hitFound = true; }
-                else if (IsHovering("tray", &r)) { newText = L"System Tray"; newRectF = r; hitFound = true; }
-                else if (IsHovering("notification", &r)) { newText = L"Notifications"; newRectF = r; hitFound = true; }
-                else if (IsHovering("ping", &r)) {
-                    Module *m = self->renderer->GetModule("ping");
-                    PingModule *pm = static_cast<PingModule *>(m);
 
-                    if (pm) {
-                        std::string ip = pm->targetIP;
-                        std::wstring w_ip(ip.begin(), ip.end());
-                        newText = L"Ping Target: " + w_ip + L"\nLatency: " + std::to_wstring(pm->lastPing) + L"ms";
-                    }
-                    else newText = L"Latency";
+            if (hitModule) {
+                std::string type = hitModule->config.type;
 
-                    newRectF = r;
-                    hitFound = true;
-                }
-                else if (IsHovering("clock", &r)) {
+                if (type == "audio") newText = L"Volume";
+                else if (type == "network") newText = L"Network";
+                else if (type == "battery") newText = L"Battery";
+                else if (type == "cpu") newText = L"CPU Usage";
+                else if (type == "gpu") newText = L"GPU Temperature";
+                else if (type == "ram") newText = L"RAM Usage";
+                else if (type == "tray") newText = L"System Tray";
+                else if (type == "notification") newText = L"Notifications";
+                else if (type == "weather") newText = L"Weather Near Me";
+                else if (type == "clock") {
                     SYSTEMTIME st; GetLocalTime(&st);
                     wchar_t buf[64];
                     swprintf_s(buf, L"%02d/%02d/%d", st.wMonth, st.wDay, st.wYear);
                     newText = buf;
-                    newRectF = r;
-                    hitFound = true;
                 }
+                else if (type == "ping") {
+                    PingModule *pm = static_cast<PingModule *>(hitModule);
+                    std::string ip = pm->targetIP;
+                    std::wstring w_ip(ip.begin(), ip.end());
+                    newText = L"Ping Target: " + w_ip + L"\nLatency: " + std::to_wstring(pm->lastPing) + L"ms";
+                }
+                // Custom modules or others default to empty, or you can add a description field later
             }
-
-            if (hitFound) {
+            if (!newText.empty()) {
                 if (self->lastTooltipText != newText) {
                     self->lastTooltipText = newText;
                     RECT logRect = { (LONG)newRectF.left, (LONG)newRectF.top, (LONG)newRectF.right, (LONG)newRectF.bottom };
@@ -463,7 +454,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     }
                     if (ws->hoveredIndex != index) {
                         ws->hoveredIndex = index;
-						InvalidateRect(hwnd, NULL, FALSE);
+                        InvalidateRect(hwnd, NULL, FALSE);
                     }
                     handled = true;
                 }
@@ -476,12 +467,19 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     handled = true;
                 }
                 else if (type == "tray") {
-                    if (!self->trayFlyout) self->trayFlyout = new TrayFlyout(GetModuleHandle(NULL));
+                    if (!self->trayFlyout) {
+                        self->trayFlyout = new TrayFlyout(
+                            self->hInst,
+                            self->renderer->GetFactory(),
+                            self->renderer->GetWICFactory(),
+                            self->renderer->theme
+                        );
+                    }
                     self->trayFlyout->Toggle(targetRect);
                     handled = true;
                 }
                 else if (type == "network") {
-                    ShellExecute(NULL, L"open", L"ms-settings:network", NULL, NULL, SW_SHOWNORMAL);
+                    CommandExecutor::Execute("shell:ms-settings:network", hwnd);
                     handled = true;
                 }
                 else if (type == "battery") {
@@ -489,36 +487,13 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     handled = true;
                 }
                 else if (type == "notification") {
-                    INPUT inputs[4] = {};
-                    inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
-                    inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'N';
-                    inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'N'; inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-                    inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = VK_LWIN; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-                    SendInput(4, inputs, sizeof(INPUT));
+                    CommandExecutor::Execute("notification", hwnd);
                     handled = true;
                 }
-                // --- CUSTOM MODULES ---
                 else if (type == "custom") {
                     std::string action = m->config.onClick;
                     if (!action.empty()) {
-                        if (action == "toggle_desktop") {
-                            INPUT inputs[4] = {};
-                            inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
-                            inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = 'D';
-                            inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'D'; inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-                            inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = VK_LWIN; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-                            SendInput(4, inputs, sizeof(INPUT));
-                        }
-                        else if (action == "toggle_start") {
-                            SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0);
-                        }
-                        else if (action.rfind("exec:", 0) == 0) {
-                            // exec:notepad.exe
-                            std::string cmd = action.substr(5);
-                            std::wstring wcmd(cmd.begin(), cmd.end());
-                            ShellExecuteW(NULL, L"open", wcmd.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                        }
-                        // Add more custom commands here as needed
+                        CommandExecutor::Execute(action, hwnd);
                         handled = true;
                     }
                 }
@@ -528,20 +503,6 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             }
         }
 
-        // 3. Fallback: Window Targets (Taskbar Icons)
-        if (!handled) {
-            for (const auto &target : self->windowTargets) {
-                if (PtInRect(&target.rect, pt)) {
-                    if (IsWindow(target.hwnd)) {
-                        if (IsIconic(target.hwnd)) ShowWindow(target.hwnd, SW_RESTORE);
-                        else ShowWindow(target.hwnd, SW_MINIMIZE);
-                        SetForegroundWindow(target.hwnd);
-                    }
-                    handled = true;
-                    break;
-                }
-            }
-        }
         return 0;
     }
     case WM_TIMER:
@@ -560,11 +521,30 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         if (LOWORD(lParam) == HTCLIENT && self && self->renderer) {
             POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
 
-            if (self->renderer->HitTest(pt, self->windowTargets)) {
-                SetCursor(LoadCursor(NULL, IDC_HAND));
-                return TRUE;
+            float dpi = (float)GetDpiForWindow(hwnd);
+            float scale = dpi / 96.0f;
+            bool hit = false;
+
+            RECT barRect; GetWindowRect(hwnd, &barRect);
+            for (auto const &[id, cfg] : self->renderer->theme.modules) {
+                D2D1_RECT_F f = self->renderer->GetModuleRect(id);
+                if (f.right == 0.0f && f.bottom == 0.0f) continue;
+                RECT localR = {
+                    (LONG)(f.left * scale), (LONG)(f.top * scale),
+                    (LONG)(f.right * scale), (LONG)(f.bottom * scale)
+                };
+                if (PtInRect(&localR, pt)) {
+                    hit = true;
+                    break;
+                }
             }
-            SetCursor(LoadCursor(NULL, IDC_ARROW));
+
+            if (hit) {
+                SetCursor(LoadCursor(NULL, IDC_HAND));
+            }
+            else {
+                SetCursor(LoadCursor(NULL, IDC_ARROW));
+            }
             return TRUE;
         }
         break;
@@ -581,7 +561,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
         return 0;
     case WM_RAILING_APPBAR: // Re-check size
-		if (wParam == ABN_POSCHANGED) UpdateAppBarPosition(hwnd);
+        if (wParam == ABN_POSCHANGED) UpdateAppBarPosition(hwnd);
         return 0;
     case WM_DESTROY:
         UnregisterAppBar(hwnd);
@@ -591,7 +571,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
         if (self->flyout) delete self->flyout;
         if (self->trayFlyout) delete self->trayFlyout;
-		UnregisterHotKey(hwnd, HOTKEY_KILL_THIS);
+        UnregisterHotKey(hwnd, HOTKEY_KILL_THIS);
         PostQuitMessage(0);
         return 0;
     default:
@@ -614,7 +594,7 @@ void Railing::WinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idOb
 ULONGLONG Railing::GetInterval(std::string type, int def)
 {
     Module *m = renderer->GetModule(type);
-	return (m && m->config.interval > 0) ? (ULONGLONG)m->config.interval : (ULONGLONG)def;
+    return (m && m->config.interval > 0) ? (ULONGLONG)m->config.interval : (ULONGLONG)def;
 }
 
 void Railing::UpdateSystemStats() {
@@ -623,13 +603,12 @@ void Railing::UpdateSystemStats() {
 
     if (now - lastCpuUpdate >= GetInterval("cpu", 1000)) { cachedCpuUsage = stats.GetCpuUsage(); lastCpuUpdate = now; needsRepaint = true; }
     if (now - lastRamUpdate >= GetInterval("ram", 1000)) { cachedRamUsage = stats.GetRamUsage(); lastRamUpdate = now; needsRepaint = true; }
-	if (now - lastGpuUpdate >= GetInterval("gpu", 1000)) { cachedGpuTemp = gpuStats.GetGpuTemp(); lastGpuUpdate = now; needsRepaint = true; }
+    if (now - lastGpuUpdate >= GetInterval("gpu", 1000)) { cachedGpuTemp = gpuStats.GetGpuTemp(); lastGpuUpdate = now; needsRepaint = true; }
     if (needsRepaint) InvalidateRect(hwndBar, NULL, FALSE);
 }
 
 void Railing::DrawBar(HWND hwnd) {
     HWND foreground = GetForegroundWindow();
-    windowTargets.clear();
 
     if (!renderer) renderer = new RailingRenderer(hwnd);
     RECT rc; GetWindowRect(hwnd, &rc);
@@ -644,7 +623,7 @@ void Railing::DrawBar(HWND hwnd) {
     statsData.isMuted = cachedMute;
 
     renderer->UpdateStats(statsData);
-    renderer->Draw(allWindows, foreground, windowTargets);
+    renderer->Draw(allWindows, foreground);
 }
 
 void Railing::GetTopLevelWindows(std::vector<WindowInfo> &outWindows)
@@ -672,7 +651,7 @@ void Railing::GetTopLevelWindows(std::vector<WindowInfo> &outWindows)
         }, reinterpret_cast<LPARAM>(&params));
 }
 
-BOOL Railing::IsAppWindow(HWND hwnd)         
+BOOL Railing::IsAppWindow(HWND hwnd)
 {
     if (!IsWindowVisible(hwnd)) return FALSE;
     LONG_PTR style = GetWindowLongPtr(hwnd, GWL_EXSTYLE);

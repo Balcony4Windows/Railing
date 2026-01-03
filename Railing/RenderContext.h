@@ -1,36 +1,33 @@
 #pragma once
 #include <d2d1.h>
 #include <dwrite.h>
+#include <string>
+#include <vector>
 
 struct RenderContext {
-    ID2D1RenderTarget *rt;
-    IDWriteTextFormat *textFormat;
+    ID2D1RenderTarget *rt; /* D2D RESOURCES */
+	ID2D1SolidColorBrush *bgBrush;
     ID2D1SolidColorBrush *textBrush;
-    ID2D1SolidColorBrush *bgBrush;
     ID2D1SolidColorBrush *borderBrush;
-    ID2D1Bitmap *appIcon = nullptr;
 
-    IDWriteFactory *writeFactory;
+    IDWriteFactory *writeFactory; /* FONTS */
+    IDWriteTextFormat *textFormat;
+    IDWriteTextFormat *boldTextFormat = nullptr;
     IDWriteTextFormat *largeTextFormat;
     IDWriteTextFormat *iconFormat;
+    IDWriteTextFormat *emojiFormat = nullptr;
 
-    int cpuUsage = 0;
+    int cpuUsage = 0; /* SYSTEM STATE */
     int ramUsage = 0;
     int gpuTemp = 0;
-    float volume;
-	bool isMuted;
+    float volume = 0.0f;
+	bool isMuted = false;
+    ID2D1Bitmap *appIcon = nullptr;
 
-    float logicalWidth;
-    float logicalHeight;
-    float pillOpacity = 3.0f;
-    float rounding = 4.0f;
-    float moduleGap = 8.0f;
-    float innerPadding = 6.0f;
-    float scale;
-    UINT dpi;
-    HWND hwnd;
-
-    bool use24HourTime = false;
+    float scale = 1.0f; /* WINDOW INFO */
+    UINT dpi = 96;
     bool isVertical = false;
-    D2D1_COLOR_F accentColor;
+    HWND hwnd;
+    float logicalWidth = 0.0f;
+    float logicalHeight = 0.0f;
 };

@@ -5,6 +5,8 @@
 #include "ModuleFactory.h"
 #include "resource.h"
 #include <dwmapi.h>
+#include "Types.h"
+#include <wincodec.h>
 #pragma comment(lib, "d2d1")
 #pragma comment(lib, "dwrite")
 #pragma comment(lib, "windowscodecs.lib")
@@ -15,9 +17,9 @@
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
 
-RailingRenderer::RailingRenderer(HWND hwnd) : hwnd(hwnd), dock(nullptr)
+RailingRenderer::RailingRenderer(HWND hwnd) : hwnd(hwnd)
 {
-	theme = ThemeLoader::Load("config.json");
+    theme = ThemeLoader::Load("config.json");
     if (theme.global.blur) theme.global.radius = 8.0f; // This is fixed by Windows :(
     char debugBuf[256];
     sprintf_s(debugBuf, "DEBUG: Loaded Config. Layout sizes: L=%d, C=%d, R=%d\n",
@@ -26,14 +28,14 @@ RailingRenderer::RailingRenderer(HWND hwnd) : hwnd(hwnd), dock(nullptr)
         (int)theme.layout.right.size());
     OutputDebugStringA(debugBuf);
     if (theme.global.blur && theme.global.background.a < 1.0f) {
-		EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
+        EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
     }
     else {
         MARGINS margins = { -1 };
         DwmExtendFrameIntoClientArea(hwnd, &margins);
     }
-	D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), reinterpret_cast<void **>(&pFactory));
-	DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&pWriteFactory));
+    D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), reinterpret_cast<void **>(&pFactory));
+    DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&pWriteFactory));
 
     std::wstring fontName(theme.global.font.begin(), theme.global.font.end());
     pWriteFactory->CreateTextFormat(
@@ -43,18 +45,31 @@ RailingRenderer::RailingRenderer(HWND hwnd) : hwnd(hwnd), dock(nullptr)
         DWRITE_FONT_STRETCH_NORMAL,
         theme.global.fontSize,
         L"en-us",
-		&pTextFormat);
-	pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        &pTextFormat);
+    pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
     pWriteFactory->CreateTextFormat(
-		L"Segoe MDL2 Assets", NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 
-		theme.global.fontSize + 2.0f, L"en-us", &pIconFormat);
-	pIconFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	pIconFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        L"Segoe MDL2 Assets", NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        theme.global.fontSize + 2.0f, L"en-us", &pIconFormat);
+    pIconFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    pIconFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
-	RECT rc; GetClientRect(hwnd, &rc);
-	D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
+    pWriteFactory->CreateTextFormat(
+        L"Segoe UI Emoji", NULL,
+        DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+        16.0f, L"en-us", &pEmojiFormat);
+    pEmojiFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    pEmojiFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    pWriteFactory->CreateTextFormat(
+        L"Segoe UI", NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL, 14.0f, L"en-us", &pTextFormatBold);
+    pTextFormatBold->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    pTextFormatBold->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+    RECT rc; GetClientRect(hwnd, &rc);
+    D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
         0, 0, D2D1_RENDER_TARGET_USAGE_NONE, D2D1_FEATURE_LEVEL_DEFAULT);
     D2D1_HWND_RENDER_TARGET_PROPERTIES hwndProps = D2D1::HwndRenderTargetProperties(hwnd, D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top));
@@ -64,9 +79,9 @@ RailingRenderer::RailingRenderer(HWND hwnd) : hwnd(hwnd), dock(nullptr)
     pRenderTarget->CreateSolidColorBrush(theme.global.background, &pBgBrush);
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &pBorderBrush); // Temp
 
-    CoInitialize(NULL);
-    CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pWICFactory));
-    dock.SetWICFactory(pWICFactory);
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pWICFactory));
+    if (FAILED(hr)) return;
+    LoadAppIcon();
     LoadAppIcon();
 
     // Build module list
@@ -97,6 +112,7 @@ RailingRenderer::~RailingRenderer()
     if (pBorderBrush) pBorderBrush->Release();
     if (pTextFormat) pTextFormat->Release();
     if (pIconFormat) pIconFormat->Release();
+    if (pEmojiFormat) pEmojiFormat->Release();
     if (pRenderTarget) pRenderTarget->Release();
     if (pFactory) pFactory->Release();
     if (pWriteFactory) pWriteFactory->Release();
@@ -104,14 +120,14 @@ RailingRenderer::~RailingRenderer()
 
 void RailingRenderer::Reload()
 {
-	ThemeConfig newTheme = ThemeLoader::Load("config.json");
-	this->theme = newTheme;
+    ThemeConfig newTheme = ThemeLoader::Load("config.json");
+    this->theme = newTheme;
     for (Module *m : leftModules) delete m;
-	for (Module *m : centerModules) delete m;
-	for (Module *m : rightModules) delete m;
-	leftModules.clear();
-	centerModules.clear();
-	rightModules.clear();
+    for (Module *m : centerModules) delete m;
+    for (Module *m : rightModules) delete m;
+    leftModules.clear();
+    centerModules.clear();
+    rightModules.clear();
     for (const auto &id : theme.layout.left) {
         Module *m = ModuleFactory::Create(id, theme);
         if (m) leftModules.push_back(m);
@@ -124,15 +140,15 @@ void RailingRenderer::Reload()
         Module *m = ModuleFactory::Create(id, theme);
         if (m) rightModules.push_back(m);
     }
-	UpdateBlurRegion();
+    UpdateBlurRegion();
     if (theme.global.blur && theme.global.background.a < 1.0f) {
-		EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
+        EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
     }
 
     Resize();
 }
 
-void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWindow, std::vector<Dock::ClickTarget> &outTargets)
+void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWindow)
 {
     if (!pRenderTarget) return;
 
@@ -182,15 +198,17 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     ctx.rt = pRenderTarget;
     ctx.writeFactory = pWriteFactory;
     ctx.textFormat = pTextFormat;
+    ctx.boldTextFormat = pTextFormatBold;
     ctx.iconFormat = pIconFormat;
+    ctx.emojiFormat = pEmojiFormat;
     ctx.textBrush = pTextBrush;
     ctx.bgBrush = pBgBrush;
     ctx.borderBrush = pBorderBrush;
     ctx.cpuUsage = currentStats.cpuUsage;
-	ctx.gpuTemp = currentStats.gpuTemp;
+    ctx.gpuTemp = currentStats.gpuTemp;
     ctx.ramUsage = currentStats.ramUsage;
-	ctx.volume = currentStats.volume;
-	ctx.isMuted = currentStats.isMuted;
+    ctx.volume = currentStats.volume;
+    ctx.isMuted = currentStats.isMuted;
     ctx.appIcon = pAppIcon;
     pRenderTarget->SetDpi((float)ctx.dpi, (float)ctx.dpi);
     ctx.scale = ctx.dpi / 96.0f;
@@ -297,7 +315,6 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
         }
     }
 
-    outTargets.clear();
     pRenderTarget->EndDraw();
 }
 
@@ -365,11 +382,8 @@ bool HitTestRecursive(const std::vector<Module *> &list, POINT pt, float scale) 
     }
     return false;
 }
-bool RailingRenderer::HitTest(POINT pt, const std::vector<Dock::ClickTarget> &targets)
+bool RailingRenderer::HitTest(POINT pt)
 {
-    for (const auto &target : targets) {
-        if (PtInRect(&target.rect, pt)) return true;
-    }
     // Check App Icon
     if (PtInRect(&iconClickRect, pt)) return true;
 

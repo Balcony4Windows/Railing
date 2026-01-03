@@ -7,7 +7,6 @@
 #include <dwmapi.h>
 #include "RailingRenderer.h"
 #include "VolumeFlyout.h"
-#include "Dock.h"
 #include "TrayFlyout.h"
 #include "SystemStats.h"
 #include "TooltipHandler.h"
@@ -48,7 +47,7 @@ public:
 	TrayFlyout *trayFlyout;
 private:
 	HWND CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config);
-	void DrawBar(HWND hwnd);
+	void DrawBar(HWND hwnd); 
 
 	bool needsWindowRefresh = true;
 
@@ -61,7 +60,6 @@ private:
 	UINT shellMsgId = 0;
 	std::vector <WindowInfo> windows;
 	std::vector <WindowInfo> allWindows;
-	std::vector<Dock::ClickTarget> windowTargets;
 
 	ULONGLONG lastCpuUpdate = 0;
 	ULONGLONG lastRamUpdate = 0;
@@ -81,4 +79,3 @@ private:
 	std::wstring lastTooltipText = L"";
 	bool isTrackingMouse = false;
 };
-

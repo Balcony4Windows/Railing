@@ -1,66 +1,74 @@
 {
   "global": {
-    "height": 46,
-    "position": "top",
+    "height": 36,
+    "position": "bottom",
     "monitor": "primary",
-    "margin": [8, 12, 0, 12],
-    "font": "Segoe UI Variable Display",
-    "font_size": 11,
-    "font_weight": "bold",
-    "background": "#e60a0a12",
     "blur": true,
-    "radius": 4,
-    "border_width": 2,
-    "border_color": "#ff00f0ff"
-  },
-  "layout": {
-    "left": ["app_icon", "workspaces"],
-    "center": ["clock"],
-    "right": ["cpu", "gpu", "ram", "group_hardware"]
-  },
-  "app_icon": { "type": "app_icon", "style": { "padding": [0, 8] } },
-  "workspaces": {
-    "type": "workspaces",
+    "font": "Consolas",
+    "font_size": 14.0,
+    "margin": [0, 0, 0, 0],
+    "animation": { "enabled": true, "duration": 150, "start_scale": 1.0, "fps": 60 },
     "style": {
-      "bg": "#1000f0ff", "radius": 0, "padding": [4, 4], "margin": [10, 0, 10, 0],
-      "border_width": 1, "border_color": "#4000f0ff"
-    },
-    "item_style": { "fg": "#ff00f0ff", "padding": [0, 12], "radius": 0 },
-    "states": {
-      "active": { "fg": "#ff000000", "bg": "#ff00f0ff" },
-      "hover": { "bg": "#4000f0ff" }
+      "bg": "#EE050505",
+      "radius": 0,
+      "border_width": 2.0,
+      "border_color": "#FF00FFFF" 
     }
   },
-  "clock": {
-    "type": "clock", "format": "{:%H:%M:%S}",
-    "style": { "fg": "#ffff0099", "font_weight": "bold", "font_size": 16, "padding": [0, 20] }
+  "layout": {
+    "left": [ "start_btn", "cmd_btn" ],
+    "center": [ "workspaces" ],
+    "right": [ "gpu", "cpu", "ping", "clock" ]
   },
-  "cpu": {
-    "type": "cpu", "format": "CPU {usage}%", "interval": 1000,
+  "start_btn": {
+    "type": "custom",
+    "format": " SYS_ROOT ",
+    "on_click": "toggle_start",
     "style": {
-      "bg": "#ff2d004d", "fg": "#ffd500f9", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
-      "border_width": 1, "border_color": "#ffd500f9"
+      "fg": "#FF00FFFF", "bg": "#2000FFFF", 
+      "padding": [0, 10], "margin": [0, 0, 0, 0], 
+      "border_width": 0, "border_color": "#FF00FFFF" 
+    },
+    "states": { "hover": { "bg": "#FF00FFFF", "fg": "#000000" } }
+  },
+  "cmd_btn": {
+    "type": "custom",
+    "format": ">_TERM",
+    "on_click": "exec:wt.exe",
+    "style": { "fg": "#00FF00", "padding": [0, 10], "margin": [0, 0, 0, 0] },
+    "states": { "hover": { "fg": "#AAFFAA", "bg": "#1000FF00" } }
+  },
+  "workspaces": {
+    "type": "workspaces",
+    "style": { "margin": [0, 0, 0, 0] },
+    "item_style": {
+      "padding": [0, 16], "margin": [0, 0, 0, 0], "radius": 0,
+      "fg": "#555555", "bg": "transparent", "border_width": 0
+    },
+    "states": {
+      "active": { "fg": "#00FFFF", "border_width": 2.0, "border_color": "#00FFFF" },
+      "hover": { "fg": "#FFFFFF", "bg": "#222222" }
     }
   },
   "gpu": {
-    "type": "gpu", "format": "GPU {temp}\u00B0C", "interval": 2000,
-    "style": {
-      "bg": "#ff330000", "fg": "#ffff3d00", "radius": 0, "padding": [0, 12], "margin": [10, 4, 10, 4],
-      "border_width": 1, "border_color": "#ffff3d00"
-    }
+    "type": "gpu",
+    "format": "GPU:{temp}C",
+    "style": { "fg": "#FF0055", "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
-  "ram": {
-    "type": "ram", "format": "MEM {usage}%",
-    "style": {
-      "bg": "#ff001a4d", "fg": "#ff00e5ff", "radius": 0, "padding": [0, 12], "margin": [10, 12, 10, 4],
-      "border_width": 1, "border_color": "#ff00e5ff"
-    }
+  "cpu": {
+    "type": "cpu",
+    "format": "CPU:{usage}%",
+    "style": { "fg": "#00FFFF", "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
-  "group_hardware": {
-    "type": "group", "orientation": "horizontal", "modules": ["network", "volume", "battery"],
-    "style": { "bg": "#80000000", "radius": 0, "padding": [0, 8], "margin": [10, 0, 10, 0], "border_width": 1, "border_color": "#20ffffff" }
+  "ping": {
+    "type": "ping",
+    "target": "1.1.1.1",
+    "format": "NET:{ping}ms",
+    "style": { "fg": "#FFFF00", "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
-  "network": { "type": "network", "style": { "fg": "#ffffffff", "padding": [0, 8] } },
-  "volume": { "type": "audio", "style": { "fg": "#ffffffff", "padding": [0, 8] } },
-  "battery": { "type": "battery", "style": { "fg": "#ffffffff", "padding": [0, 8] } }
+  "clock": {
+    "type": "clock",
+    "format": "[ %H:%M:%S ]",
+    "style": { "fg": "#FFFFFF", "bg": "#20FFFFFF", "padding": [0, 12], "margin": [0, 0, 0, 0] }
+  }
 }

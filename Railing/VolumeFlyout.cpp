@@ -9,123 +9,136 @@
 #ifndef DWMWA_WINDOW_CORNER_PREFERENCE
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
-#ifndef DWMWCP_ROUND
-#define DWMWCP_ROUND 2
-#endif
 
-ID2D1Factory *VolumeFlyout::pFactory = nullptr;
-IDWriteFactory *VolumeFlyout::pWriteFactory = nullptr;
-IDWriteTextFormat *VolumeFlyout::pTextFormat = nullptr;
 ULONGLONG VolumeFlyout::lastAutoCloseTime = 0;
 ULONGLONG VolumeFlyout::lastAnimTime = 0;
 
-VolumeFlyout::VolumeFlyout(HINSTANCE hInst) {
-    if (!pFactory) D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &pFactory);
-    if (!pWriteFactory) DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), (IUnknown **)&pWriteFactory);
-
-    if (!pTextFormat && pWriteFactory) {
-        pWriteFactory->CreateTextFormat(L"Segoe UI", NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL, 14.0f, L"en-us", &pTextFormat);
+VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, const ThemeConfig &config)
+    : hInst(hInst), pFactory(pSharedFactory), pWriteFactory(pSharedWriteFactory)
+{
+    this->style = config.global;
+    WNDCLASS wc = { 0 };
+    if (!GetClassInfo(hInst, L"VolumeFlyoutClass", &wc)) {
+        wc.lpfnWndProc = VolumeFlyout::WindowProc;
+        wc.hInstance = hInst;
+        wc.lpszClassName = L"VolumeFlyoutClass";
+        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+        RegisterClass(&wc);
     }
-    hwnd = nullptr;
+    if (pWriteFactory && !pTextFormat) {
+        std::wstring fontName = std::wstring(style.font.begin(), style.font.end());
+        if (fontName.empty()) fontName = L"Segoe UI";
+
+        pWriteFactory->CreateTextFormat(
+            fontName.c_str(),
+            NULL,
+            DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            14.0f,
+            L"en-us",
+            &pTextFormat
+        );
+    }
 }
 
 VolumeFlyout::~VolumeFlyout() {
-    if (pRenderTarget) { pRenderTarget->Release(); pRenderTarget = nullptr; }
-    if (pBgBrush) { pBgBrush->Release(); pBgBrush = nullptr; }
-    if (pFgBrush) { pFgBrush->Release(); pFgBrush = nullptr; }
-    if (pAccentBrush) { pAccentBrush->Release(); pAccentBrush = nullptr; }
-    hwnd = nullptr;
+    if (pRenderTarget) pRenderTarget->Release();
+    if (pBgBrush) pBgBrush->Release();
+    if (pFgBrush) pFgBrush->Release();
+    if (pAccentBrush) pAccentBrush->Release();
+    if (pBorderBrush) pBorderBrush->Release();
+    if (pTextFormat) pTextFormat->Release();
+
+    if (hwnd) DestroyWindow(hwnd);
 }
 
 void VolumeFlyout::PositionWindow(RECT iconRect) {
+    if (!hwnd) return;
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;
     int flyWidth = (int)(300 * scale);
     int flyHeight = (int)(180 * scale);
-
     HMONITOR hMonitor = MonitorFromRect(&iconRect, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi = { sizeof(MONITORINFO) };
     GetMonitorInfo(hMonitor, &mi);
 
-    int gap = (int)(8 * scale);
-    bool isBottom = (iconRect.top + (iconRect.bottom - iconRect.top) / 2) >
-        (mi.rcMonitor.top + (mi.rcMonitor.bottom - mi.rcMonitor.top) / 2);
-
+    int gap = (int)(12 * scale);
     this->targetX = iconRect.left + ((iconRect.right - iconRect.left) / 2) - (flyWidth / 2);
+    this->targetY = iconRect.top - flyHeight - gap;
 
-    if (isBottom) {
-        this->targetY = iconRect.top - flyHeight - gap;
-    }
-    else {
+    if (this->targetY < mi.rcWork.top) { // flip if touching top
         this->targetY = iconRect.bottom + gap;
     }
-
     if (this->targetX < mi.rcWork.left + gap) this->targetX = mi.rcWork.left + gap;
     if (this->targetX + flyWidth > mi.rcWork.right - gap) this->targetX = mi.rcWork.right - flyWidth - gap;
-    if (this->targetY < mi.rcWork.top + gap) this->targetY = mi.rcWork.top + gap;
-    if (this->targetY + flyHeight > mi.rcWork.bottom - gap) this->targetY = mi.rcWork.bottom - flyHeight - gap;
 }
 
 void VolumeFlyout::Toggle(RECT iconRect) {
     ULONGLONG now = GetTickCount64();
     if (now - lastAutoCloseTime < 200) return;
 
-    // 1. LAZY CREATION
     if (!hwnd) {
-        WNDCLASS wc = { 0 };
-        if (!GetClassInfo(GetModuleHandle(NULL), L"VolumeFlyoutClass", &wc)) {
-            wc.lpfnWndProc = VolumeFlyout::WindowProc;
-            wc.hInstance = GetModuleHandle(NULL);
-            wc.lpszClassName = L"VolumeFlyoutClass";
-            wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-            RegisterClass(&wc);
-        }
-
-        // Create hidden initially
         hwnd = CreateWindowEx(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
             L"VolumeFlyoutClass", L"VolumeFlyout",
             WS_POPUP,
             0, 0, 300, 180,
-            nullptr, nullptr, GetModuleHandle(NULL), this
+            nullptr, nullptr, hInst, this
         );
-		float scale = (float)GetDpiForWindow(hwnd) / 96.0f;
-        PositionWindow(iconRect);
-        int cornerPreference = DWMWCP_ROUND;
-        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPreference, sizeof(cornerPreference));
-        MARGINS margins = { -1 };
-        DwmExtendFrameIntoClientArea(hwnd, &margins);
-        RailingRenderer::EnableBlur(hwnd, 0x00000000);
+
+        if (style.blur) {
+            RailingRenderer::EnableBlur(hwnd, 0x00000000);
+        }
+        else {
+            MARGINS margins = { -1 };
+            DwmExtendFrameIntoClientArea(hwnd, &margins);
+        }
+
+        DWM_WINDOW_CORNER_PREFERENCE preference = (style.radius > 0.0f) ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
         SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
     }
 
     if (animState == AnimationState::Visible || animState == AnimationState::Entering) {
-        animState = AnimationState::Exiting;
-        lastAnimTime = now;
-        InvalidateRect(hwnd, NULL, FALSE);
+        if (style.animation.enabled) {
+            animState = AnimationState::Exiting;
+            lastAnimTime = now;
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
+        else {
+            animState = AnimationState::Hidden;
+            ShowWindow(hwnd, SW_HIDE);
+        }
     }
     else {
         audio.EnsureInitialized(hwnd);
         RefreshDevices();
         PositionWindow(iconRect);
 
-        animState = AnimationState::Entering;
-        currentAlpha = 0.01f;
-        currentOffset = 20.0f;
-        lastAnimTime = GetTickCount64();
-
         int screenH = GetSystemMetrics(SM_CYSCREEN);
-        float direction = (targetY > screenH / 2) ? currentOffset : -currentOffset;
+        float directionOffset = (targetY > screenH / 2) ? 20.0f : -20.0f;
 
         float dpi = (float)GetDpiForWindow(hwnd);
         float scale = dpi / 96.0f;
-        SetWindowPos(hwnd, HWND_TOPMOST,
-            targetX,
-            targetY + (int)direction,
-            (int)(300 * scale), (int)(180 * scale),
-            SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        int w = (int)(300 * scale);
+        int h = (int)(180 * scale);
+        int r = (int)style.radius;
+        HRGN hRgn = (r > 0) ? CreateRoundRectRgn(0, 0, w, h, r * 2, r * 2) : CreateRectRgn(0, 0, w, h);
+        SetWindowRgn(hwnd, hRgn, TRUE);
+        if (style.animation.enabled) {
+            animState = AnimationState::Entering;
+            currentAlpha = 0.01f;
+            currentOffset = directionOffset;
+            lastAnimTime = now;
+        }
+        else {
+            animState = AnimationState::Visible;
+            currentAlpha = 1.0f;
+            currentOffset = 0.0f;
+        }
 
+        SetWindowPos(hwnd, HWND_TOPMOST, targetX, targetY + (int)currentOffset, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
         SetForegroundWindow(hwnd);
         InvalidateRect(hwnd, NULL, FALSE);
     }
@@ -311,159 +324,152 @@ void VolumeFlyout::Draw() {
             D2D1_RENDER_TARGET_TYPE_DEFAULT,
             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
             96.0f, 96.0f);
-        pFactory->CreateHwndRenderTarget(props, D2D1::HwndRenderTargetProperties(hwnd, size), &pRenderTarget);
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.4f), &pBgBrush);
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pFgBrush);
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::CornflowerBlue), &pAccentBrush);
+        HRESULT hr = pFactory->CreateHwndRenderTarget(props, D2D1::HwndRenderTargetProperties(hwnd, size), &pRenderTarget);
+        if (SUCCEEDED(hr) && pRenderTarget) {
+            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &pBgBrush);
+            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pFgBrush);
+            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::CornflowerBlue), &pAccentBrush);
+            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &pBorderBrush);
+        }
+        else return;
     }
     else {
-        D2D1_SIZE_F currentSize = pRenderTarget->GetSize();
-        if (currentSize.width != size.width || currentSize.height != size.height) {
-            pRenderTarget->Resize(size);
-        }
+        D2D1_SIZE_U curSize = pRenderTarget->GetPixelSize();
+        if (curSize.width != size.width || curSize.height != size.height) pRenderTarget->Resize(size);
     }
     pRenderTarget->BeginDraw();
     pRenderTarget->Clear(D2D1::ColorF(0, 0, 0, 0));
 
-    pRenderTarget->SetTransform(D2D1::Matrix3x2F::Translation(0, currentOffset));
-    pBgBrush->SetColor(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.4f * currentAlpha));
-    pFgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f * currentAlpha));
-    pAccentBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 1.0f * currentAlpha));
+    if (pBgBrush && pFgBrush && pAccentBrush && pBorderBrush && pTextFormat) {
+        pRenderTarget->SetTransform(D2D1::Matrix3x2F::Translation(0, currentOffset));
+        D2D1_COLOR_F bgColor = style.background;
+        bgColor.a *= currentAlpha;
+        pBgBrush->SetColor(bgColor);
 
-
-    float width = pRenderTarget->GetSize().width;
-    float height = pRenderTarget->GetSize().height; // Get dynamic height
-    float padding = 20.0f;
-    float y = 20.0f;
-
-    float vol = 0.0f;
-    if (isDraggingSlider) {
-        vol = cachedVolume;
-    }
-    else {
-        vol = audio.GetVolume();
-        cachedVolume = vol;
-    }
-    pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f));
-    sliderRect = D2D1::RectF(padding, y + 30, width - padding, y + 26);
-    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(sliderRect, 3, 3), pBgBrush);
-
-    D2D1_RECT_F fillRect = sliderRect;
-    fillRect.right = fillRect.left + (fillRect.right - fillRect.left) * vol;
-    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(fillRect, 3, 3), pAccentBrush);
-
-    pRenderTarget->FillEllipse(D2D1::Ellipse(D2D1::Point2F(fillRect.right, (sliderRect.top + sliderRect.bottom) / 2), 8, 8), pFgBrush);
-
-    if (isDraggingSlider || isHoveringSlider) {
-        float thumbX = fillRect.right;
-        float tipWidth = 38.0f;
-        float tipHeight = 22.0f;
-
-        D2D1_RECT_F tipRect = D2D1::RectF(
-            thumbX - (tipWidth / 2),
-            sliderRect.top - 28.0f,
-            thumbX + (tipWidth / 2),
-            sliderRect.top - 6.0f
-        );
-        pBgBrush->SetColor(D2D1::ColorF(0.15f, 0.15f, 0.15f, 1.0f));
-        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(tipRect, 4, 4), pBgBrush);
-        ID2D1SolidColorBrush *pBorder = nullptr;
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f), &pBorder);
-        if (pBorder) {
-            pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(tipRect, 4, 4), pBorder, 1.0f);
-            pBorder->Release();
-        }
-        wchar_t volText[8];
-        swprintf_s(volText, L"%d%%", (int)(vol * 100));
-
-        pFgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f));
-        pRenderTarget->DrawTextW(volText, (UINT32)wcslen(volText), pTextFormat,
-            D2D1::RectF(tipRect.left, tipRect.top - 1, tipRect.right, tipRect.bottom),
-            pFgBrush);
-    }
-
-    pRenderTarget->DrawTextW(L"Volume", 6, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
-
-    y += 60.0f;
-
-    switchRect = D2D1::RectF(width - padding - 40, y, width - padding, y + 20);
-    pRenderTarget->DrawTextW(L"Sound Settings", 14, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
-    switchRect = D2D1::RectF(width - padding - 80, y, width - padding, y + 26);
-
-    if (isHoveringOpenButton) pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 0.8f * currentAlpha)); // Brighter
-    else pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 0.5f * currentAlpha)); // Normal
-    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(switchRect, 4, 4), pBgBrush);
-    D2D1_RECT_F btnTextRect = switchRect;
-    btnTextRect.top += 3;
-    pRenderTarget->DrawTextW(L"Open", 4, pTextFormat, D2D1::RectF(switchRect.left + 22, switchRect.top + 3, switchRect.right, switchRect.bottom), pFgBrush);
-
-    y += 50.0f;
-
-    // DEVICE DROPDOWN
-    dropdownRect = D2D1::RectF(padding, y, width - padding, y + 30);
-    pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.15f));
-    pRenderTarget->FillRectangle(dropdownRect, pBgBrush);
-    std::wstring currentName = audio.GetCurrentDeviceName();
-    pRenderTarget->DrawTextW(currentName.c_str(), (UINT32)currentName.length(), pTextFormat,
-        D2D1::RectF(padding + 10, y + 5, width - 40, y + 30), pFgBrush);
-
-    // Draw arrow
-    pRenderTarget->DrawTextW(isDropdownOpen ? L"\u2B0E" : L"\u2B0F", 1, pTextFormat,
-        D2D1::RectF(width - padding - 25, y + 5, width, y + 30), pFgBrush);
-
-    if (isDropdownOpen) {
-        y += 35.0f;
-        deviceItemRects.clear();
-        int visibleCount = min((int)devices.size(), 3);
-        float clipHeight = visibleCount * 35.0f;
-        D2D1_RECT_F clipRect = D2D1::RectF(0, y, width, y + clipHeight);
-        float totalContentHeight = (float)devices.size() * 35.0f;
-        maxScroll = max(0.0f, totalContentHeight - clipHeight);
-        pRenderTarget->PushAxisAlignedClip(clipRect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-
-        float currentY = y - scrollOffset; // Apply scroll offset
-
-        for (const auto &dev : devices) {
-            D2D1_RECT_F itemRect = D2D1::RectF(padding, currentY, width - padding, currentY + 30);
-            deviceItemRects.push_back(itemRect);
-            if (itemRect.bottom > clipRect.top && itemRect.top < clipRect.bottom) {
-                if (dev.name == currentName)
-                    pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 0.4f));
-                else
-                    pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.05f));
-
-                pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(itemRect, 2, 2), pBgBrush);
-                pRenderTarget->DrawTextW(dev.name.c_str(), (UINT32)dev.name.length(), pTextFormat,
-                    D2D1::RectF(padding + 10, currentY + 5, width, currentY + 30), pFgBrush);
+        D2D1_RECT_F bgRect = D2D1::RectF(0, 0, (float)rc.right, (float)rc.bottom);
+        float r = style.radius;
+        if (bgColor.a > 0.0f) pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(bgRect, r, r), pBgBrush);
+        if (style.borderWidth > 0.0f) {
+            D2D1_COLOR_F bColor = style.borderColor;
+            if (bColor.a == 0.0f) bColor.a = 1.0f; // Fix invisible border
+            bColor.a *= currentAlpha;
+            if (bColor.a > 0.0f) {
+                pBorderBrush->SetColor(bColor);
+                float inset = style.borderWidth / 2.0f;
+                D2D1_RECT_F bRect = D2D1::RectF(inset, inset, rc.right - inset, rc.bottom - inset);
+                pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(bRect, r, r), pBorderBrush, style.borderWidth);
             }
-            currentY += 35.0f;
         }
+        pFgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f * currentAlpha));
+        pAccentBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 1.0f * currentAlpha));
+        float width = pRenderTarget->GetSize().width;
+        float padding = 20.0f;
+        float y = 20.0f;
 
-        pRenderTarget->PopAxisAlignedClip();
-        if (maxScroll > 0) {
-            float listHeight = visibleCount * 35.0f;
-            float scrollTrackHeight = listHeight - 10.0f;
-            float scrollThumbHeight = max(20.0f, (listHeight / (devices.size() * 35.0f)) * scrollTrackHeight);
-            float scrollRatio = scrollOffset / maxScroll;
-            float scrollThumbY = (y + 5.0f) + (scrollRatio * (scrollTrackHeight - scrollThumbHeight));
-            scrollTrackRect = D2D1::RectF(width - padding, y + 5.0f, width - padding + 15.0f, y + 5.0f + scrollTrackHeight);
-            scrollThumbRect = D2D1::RectF(width - padding + 5.0f, scrollThumbY, width - padding + 8.0f, scrollThumbY + scrollThumbHeight);
-            POINT pt;
-            GetCursorPos(&pt); // Hover effect
-            ScreenToClient(hwnd, &pt);
-            bool isOverThumb = (pt.x >= scrollThumbRect.left - 5 && pt.x <= scrollThumbRect.right + 5 &&
-                pt.y >= scrollThumbRect.top && pt.y <= scrollThumbRect.bottom);
-            float thumbAlpha = (isOverThumb || isDraggingScrollbar) ? 0.6f : 0.3f;
-            pBgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, thumbAlpha));
-            pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(scrollThumbRect, 1.5f, 1.5f), pBgBrush);
+        float vol = isDraggingSlider ? cachedVolume : audio.GetVolume();
+        if (!isDraggingSlider) cachedVolume = vol;
+
+        pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f * currentAlpha));
+        sliderRect = D2D1::RectF(padding, y + 30, width - padding, y + 26);
+        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(sliderRect, 3, 3), pBgBrush);
+
+        D2D1_RECT_F fillRect = sliderRect;
+        fillRect.right = fillRect.left + (fillRect.right - fillRect.left) * vol;
+        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(fillRect, 3, 3), pAccentBrush);
+
+        pRenderTarget->FillEllipse(D2D1::Ellipse(D2D1::Point2F(fillRect.right, (sliderRect.top + sliderRect.bottom) / 2), 8, 8), pFgBrush);
+
+        if (isDraggingSlider || isHoveringSlider) {
+            float thumbX = fillRect.right;
+            D2D1_RECT_F tipRect = D2D1::RectF(thumbX - 19, sliderRect.top - 28, thumbX + 19, sliderRect.top - 6);
+            pBgBrush->SetColor(D2D1::ColorF(0.15f, 0.15f, 0.15f, 1.0f));
+            pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(tipRect, 4, 4), pBgBrush);
+
+            pBorderBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.2f));
+            pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(tipRect, 4, 4), pBorderBrush, 1.0f);
+
+            wchar_t volText[8];
+            swprintf_s(volText, L"%d%%", (int)(vol * 100));
+
+            pFgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f));
+            pRenderTarget->DrawTextW(volText, (UINT32)wcslen(volText), pTextFormat,
+                D2D1::RectF(tipRect.left, tipRect.top - 1, tipRect.right, tipRect.bottom),
+                pFgBrush);
         }
-    }
+        pFgBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f * currentAlpha));
+        pRenderTarget->DrawTextW(L"Volume", 6, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
 
-    ID2D1SolidColorBrush *border = nullptr;
-    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f), &border);
-    if (border) {
-        pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0.5f, 0.5f, width - 0.5f, height - 0.5f), 8.0f, 8.0f), border);
-        border->Release();
+        y += 60.0f;
+
+        pRenderTarget->DrawTextW(L"Sound Settings", 14, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
+        switchRect = D2D1::RectF(width - padding - 80, y, width - padding, y + 26);
+
+        float btnAlpha = isHoveringOpenButton ? 0.8f : 0.5f;
+        pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, btnAlpha * currentAlpha));
+        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(switchRect, 4, 4), pBgBrush);
+        pRenderTarget->DrawTextW(L"Open", 4, pTextFormat, D2D1::RectF(switchRect.left + 22, switchRect.top + 3, switchRect.right, switchRect.bottom), pFgBrush);
+
+        y += 50.0f;
+
+        // DEVICE DROPDOWN
+        dropdownRect = D2D1::RectF(padding, y, width - padding, y + 30);
+        pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.15f * currentAlpha));
+        pRenderTarget->FillRectangle(dropdownRect, pBgBrush);
+        std::wstring currentName = audio.GetCurrentDeviceName();
+        pRenderTarget->DrawTextW(currentName.c_str(), (UINT32)currentName.length(), pTextFormat, D2D1::RectF(padding + 10, y + 5, width - 40, y + 30), pFgBrush);
+        pRenderTarget->DrawTextW(isDropdownOpen ? L"\u2B0E" : L"\u2B0F", 1, pTextFormat, D2D1::RectF(width - padding - 25, y + 5, width, y + 30), pFgBrush);
+
+        // Draw arrow
+        pRenderTarget->DrawTextW(isDropdownOpen ? L"\u2B0E" : L"\u2B0F", 1, pTextFormat,
+            D2D1::RectF(width - padding - 25, y + 5, width, y + 30), pFgBrush);
+
+        if (isDropdownOpen) {
+            y += 35.0f;
+            deviceItemRects.clear();
+            int visibleCount = min((int)devices.size(), 3);
+            float clipHeight = visibleCount * 35.0f;
+            D2D1_RECT_F clipRect = D2D1::RectF(0, y, width, y + clipHeight);
+            float totalContentHeight = (float)devices.size() * 35.0f;
+            maxScroll = max(0.0f, totalContentHeight - clipHeight);
+            pRenderTarget->PushAxisAlignedClip(clipRect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+
+            float currentY = y - scrollOffset; // Apply scroll offset
+
+            for (const auto &dev : devices) {
+                D2D1_RECT_F itemRect = D2D1::RectF(padding, currentY, width - padding, currentY + 30);
+                deviceItemRects.push_back(itemRect);
+                if (itemRect.bottom > clipRect.top && itemRect.top < clipRect.bottom) {
+                    if (dev.name == currentName)
+                        pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 0.4f));
+                    else
+                        pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.05f));
+
+                    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(itemRect, 2, 2), pBgBrush);
+                    pRenderTarget->DrawTextW(dev.name.c_str(), (UINT32)dev.name.length(), pTextFormat,
+                        D2D1::RectF(padding + 10, currentY + 5, width, currentY + 30), pFgBrush);
+                }
+                currentY += 35.0f;
+            }
+
+            pRenderTarget->PopAxisAlignedClip();
+            if (maxScroll > 0) {
+                float listHeight = visibleCount * 35.0f;
+                float scrollTrackHeight = listHeight - 10.0f;
+                float scrollThumbHeight = max(20.0f, (listHeight / (devices.size() * 35.0f)) * scrollTrackHeight);
+                float scrollRatio = scrollOffset / maxScroll;
+                float scrollThumbY = (y + 5.0f) + (scrollRatio * (scrollTrackHeight - scrollThumbHeight));
+                scrollTrackRect = D2D1::RectF(width - padding, y + 5.0f, width - padding + 15.0f, y + 5.0f + scrollTrackHeight);
+                scrollThumbRect = D2D1::RectF(width - padding + 5.0f, scrollThumbY, width - padding + 8.0f, scrollThumbY + scrollThumbHeight);
+                POINT pt;
+                GetCursorPos(&pt); // Hover effect
+                ScreenToClient(hwnd, &pt);
+                bool isOverThumb = (pt.x >= scrollThumbRect.left - 5 && pt.x <= scrollThumbRect.right + 5 &&
+                    pt.y >= scrollThumbRect.top && pt.y <= scrollThumbRect.bottom);
+                float thumbAlpha = (isOverThumb || isDraggingScrollbar) ? 0.6f : 0.3f;
+                pBgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, thumbAlpha));
+                pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(scrollThumbRect, 1.5f, 1.5f), pBgBrush);
+            }
+        }
     }
     pRenderTarget->EndDraw();
 }

@@ -1,62 +1,67 @@
 {
-"global": {
-    "height": 28,
+  "global": {
+    "height": 32,
     "position": "top",
     "monitor": "primary",
-    "margin": [0, 0, 0, 0],
-    "animation": {
-      "enabled": true,
-      "duration": 50,
-      "startScale": 0.2,
-      "fps": 120
-    },
-    "font": "Consolas",
-    "font_size": 10,
-    "font_weight": "normal",
-    "background": "#ff000000",
     "blur": false,
-    "radius": 0,
-    "border_width": 0,
-    "border_color": "#ff000000"
-  },
-  "layout": {
-    "left": ["workspaces"],
-    "center": ["clock"],
-    "right": ["cpu", "gpu", "ram", "group_hardware"]
-  },
-  "workspaces": {
-    "type": "workspaces",
-    "style": { "bg": "transparent", "radius": 0, "padding": [0, 0], "margin": [0, 0, 0, 0] },
-    "item_style": { "fg": "#ff444444", "padding": [0, 8], "radius": 0 },
-    "states": {
-      "active": { "fg": "#ffff0000", "bg": "#ff220000", "font_weight": "bold" },
-      "hover": { "fg": "#ffffffff" }
+    "font": "Segoe UI",
+    "font_size": 12.0,
+    "margin": [0, 0, 0, 0],
+    "animation": { "enabled": true, "duration": 100, "start_scale": 1.0, "fps": 60 },
+    "style": {
+      "bg": "#F0000000",
+      "radius": 0,
+      "border_width": 1.0,
+      "border_color": "#FFCC0000"
     }
   },
-"clock": {
-  "type": "clock", 
-  "format": "[ %Y-%m-%d | %H:%M:%S ]",
-  "style": { "fg": "#ffff0000", "bg": "#ff000000", "padding": [0, 0] }
-},
-  "cpu": {
-    "type": "cpu", "format": "CPU:{usage}%", "interval": 1000,
-    "style": { "fg": "#ffff0000", "bg": "#ff000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
-    "thresholds": [{ "val": 90, "style": { "fg": "#ffffffff", "bg": "#ffff0000" } }]
+  "layout": {
+    "left": [ "label_sys", "cpu", "ram" ],
+    "center": [ "alert_clock" ],
+    "right": [ "lock_btn", "task_btn", "tray" ]
   },
-  "gpu": {
-    "type": "gpu", "format": "GPU:{temp}\u00B0C", "interval": 1000,
-    "style": { "fg": "#ffff0000", "bg": "#ff000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] },
-    "thresholds": [{ "val": 80, "style": { "fg": "#ffffffff", "bg": "#ffff0000" } }]
+  "label_sys": {
+    "type": "custom",
+    "format": "/// SYSTEM_STATUS",
+    "style": { "fg": "#FF660000", "padding": [0, 12], "margin": [0, 0, 0, 0], "font_weight": "bold" }
+  },
+  "cpu": {
+    "type": "cpu",
+    "format": "CPU: {usage}%",
+    "interval": 500,
+    "style": { "fg": "#FFFF0000", "padding": [0, 8], "margin": [0, 0, 0, 0] },
+    "thresholds": [
+      { "val": 50, "style": { "fg": "#FFFF8800" } },
+      { "val": 90, "style": { "fg": "#000000", "bg": "#FFFF0000" } }
+    ]
   },
   "ram": {
-    "type": "ram", "format": "RAM:{usage}%",
-    "style": { "fg": "#ffff0000", "bg": "#ff000000", "radius": 0, "padding": [0, 8], "margin": [0, 0, 0, 0] }
+    "type": "ram",
+    "format": "MEM: {usage}%",
+    "style": { "fg": "#FFFF0000", "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
-  "group_hardware": {
-    "type": "group", "modules": ["network", "volume", "battery"],
-    "style": { "bg": "#ff111111", "radius": 0, "padding": [0, 4], "margin": [4, 4, 4, 4], "border_width": 1, "border_color": "#ff333333" }
+  "alert_clock": {
+    "type": "clock",
+    "format": "- %H:%M:%S -",
+    "style": { "fg": "#FFFFFFFF", "bg": "#FFCC0000", "padding": [0, 20], "margin": [0, 0, 0, 0], "radius": 0, "font_weight": "bold" }
   },
-  "network": { "type": "network", "style": { "fg": "#ffaaaaaa", "padding": [0, 6] } },
-  "volume": { "type": "audio", "style": { "fg": "#ffaaaaaa", "padding": [0, 6] } },
-  "battery": { "type": "battery", "style": { "fg": "#ffaaaaaa", "padding": [0, 6] } }
+  "lock_btn": {
+    "type": "custom",
+    "format": "LOCK",
+    "on_click": "lock",
+    "style": { "fg": "#FFFF0000", "border_width": 1.0, "border_color": "#FF550000", "padding": [0, 12], "margin": [4, 2, 4, 2] },
+    "states": { "hover": { "bg": "#FFFF0000", "fg": "#000000" } }
+  },
+  "task_btn": {
+    "type": "custom",
+    "format": "TASK",
+    "on_click": "taskmgr",
+    "style": { "fg": "#FFFF0000", "border_width": 1.0, "border_color": "#FF550000", "padding": [0, 12], "margin": [4, 2, 4, 2] },
+    "states": { "hover": { "bg": "#FFFF0000", "fg": "#000000" } }
+  },
+  "tray": {
+    "type": "tray",
+    "style": { "fg": "#FFFF0000", "padding": [0, 8], "margin": [0, 8, 0, 0] },
+    "states": { "hover": { "bg": "#FF330000" } }
+  }
 }

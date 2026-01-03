@@ -1,57 +1,84 @@
 {
   "global": {
-    "height": 48,
+    "height": 40,
     "position": "top",
     "monitor": "primary",
-    "margin": [8, 8, 0, 8],
-    "font": "Segoe UI Variable Display",
-    "font_size": 11,
-    "font_weight": "normal",
-    "background": "#80f0f0f0",
     "blur": true,
-    "radius": 24,
-    "border_width": 1,
-    "border_color": "#40ffffff"
+    "font": "Segoe UI Semibold",
+    "font_size": 13.0,
+    "margin": [10, 20, 0, 20], 
+    "animation": {
+      "enabled": true,
+      "duration": 400,
+      "start_scale": 0.8,
+      "fps": 60
+    },
+    "style": {
+      "bg": "#40000000", 
+      "radius": 20, 
+      "border_width": 1.0,
+      "border_color": "#20FFFFFF"
+    }
   },
   "layout": {
-    "left": ["workspaces"],
-    "center": ["clock"],
-    "right": ["group_stats", "group_hardware"]
+    "left": [ "clock", "weather" ],
+    "center": [ "workspaces" ],
+    "right": [ "cpu", "ram", "audio", "tray" ]
   },
   "workspaces": {
     "type": "workspaces",
-    "style": { "bg": "#60ffffff", "radius": 20, "padding": [4, 4], "margin": [8, 0, 8, 8] },
-    "item_style": { "fg": "#000000", "padding": [0, 12], "radius": 20 },
+    "style": { "padding": [0, 0], "margin": [0, 0, 0, 0] },
+    "item_style": {
+      "padding": [0, 12], "margin": [4, 2, 4, 2], "radius": 16,
+      "fg": "#CCFFFFFF", "bg": "transparent"
+    },
     "states": {
-      "active": { "fg": "#ffffff", "bg": "#ff000000" },
-      "hover": { "bg": "#10000000" }
+      "active": { "fg": "#000000", "bg": "#DDFFFFFF" },
+      "hover": { "bg": "#20FFFFFF", "fg": "#FFFFFF" }
     }
   },
   "clock": {
-    "type": "clock", "format": "{:%I:%M %p}",
-    "style": { "fg": "#ff000000", "font_weight": "semibold", "font_size": 14, "padding": [0, 20] }
+    "type": "clock",
+    "format": "%H:%M  %a %d",
+    "style": { "fg": "#FFFFFF", "padding": [0, 20], "margin": [0, 0, 0, 0] }
   },
-  "group_stats": {
-    "type": "group", "modules": ["cpu", "gpu", "ram"],
-    "style": { "bg": "#60ffffff", "radius": 20, "padding": [0, 4], "margin": [8, 4, 8, 4] }
+  "weather": {
+    "type": "weather",
+    "latitude": "40.7128", 
+    "longitude": "-74.0060",
+    "interval": 1800000, 
+    "format": "{icon} {temp}°",
+    "on_click": "shell:msnweather:",
+    "style": {
+      "fg": "#FFFFFFFF",
+      "bg": "#1AFFFFFF",
+      "padding": [0, 12],
+      "margin": [6, 4, 6, 4],
+      "radius": 4
+    }
   },
   "cpu": {
-    "type": "cpu", "format": "CPU {usage}%", "interval": 1000,
-    "style": { "fg": "#ff000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
-  },
-  "gpu": {
-    "type": "gpu", "format": "GPU {temp}\u00B0", "interval": 2000,
-    "style": { "fg": "#ff000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
+    "type": "cpu",
+    "format": "CPU {usage}%",
+    "interval": 2000,
+    "style": { "fg": "#AAFFFFFF", "padding": [0, 8], "margin": [0, 0, 0, 0] },
+    "thresholds": [{ "val": 80, "style": { "fg": "#FF8888" } }]
   },
   "ram": {
-    "type": "ram", "format": "RAM {usage}%", "style": { "fg": "#ff000000", "radius": 16, "padding": [0, 12], "margin": [4, 2, 4, 2] }
+    "type": "ram",
+    "format": "RAM {usage}%",
+    "interval": 2000,
+    "style": { "fg": "#AAFFFFFF", "padding": [0, 8], "margin": [0, 0, 0, 0] }
   },
-  "group_hardware": {
-    "type": "group", "modules": ["network", "volume", "battery", "tray"],
-    "style": { "bg": "#10000000", "radius": 20, "padding": [0, 12], "margin": [8, 0, 8, 0] }
+  "audio": {
+    "type": "audio",
+    "format": "🔊 {vol}%",
+    "style": { "fg": "#FFFFFF", "padding": [0, 15], "margin": [4, 4, 4, 4], "radius": 16 },
+    "states": { "hover": { "bg": "#20FFFFFF" } }
   },
-  "network": { "type": "network", "style": { "fg": "#ff000000", "padding": [0, 8] } },
-  "volume": { "type": "audio", "style": { "fg": "#ff000000", "padding": [0, 8] } },
-  "battery": { "type": "battery", "style": { "fg": "#ff000000", "padding": [0, 8] } },
-  "tray": { "type": "tray", "style": { "fg": "#ff000000", "padding": [0, 8] } }
+  "tray": {
+    "type": "tray",
+    "style": { "fg": "#FFFFFF", "padding": [0, 15], "margin": [0, 5, 0, 0] },
+    "states": { "hover": { "bg": "#20FFFFFF", "radius": 20 } }
+  }
 }
