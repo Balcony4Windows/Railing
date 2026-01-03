@@ -27,10 +27,10 @@ Railing includes several built-in themes to get you started. You can find these 
 
 | Theme | Preview | Source |
 | :--- | :--- | :--- |
-| **Neon Cyberpunk**<br>High contrast, retrowave aesthetic. | ![Neon Cyberpunk](screenshots/neon_cyberpunk.png) | [neon_cyberpunk.json](presets/neon_cyberpunk.json) |
-| **Nordic Minimal**<br>Matte colors, rounded corners, clean look. | ![Nordic Minimal](screenshots/nordic_minimal.png) | [nordic_minimal.json](presets/nordic_minimal.json) |
-| **Glass Pill**<br>Windows 11 style, heavy blur, floating modules. | ![Glass Pill](screenshots/glass_pill.png) | [glass_pill.json](presets/glass_pill.json) |
-| **Red Alert**<br>High-density, server-monitor style. | ![Red Alert](screenshots/red_alert.png) | [red_alert.json](presets/red_alert.json) |
+| **Neon Cyberpunk**<br>High contrast, retrowave aesthetic. | <img src="screenshots/neon_cyberpunk.png" width="600"> | [neon_cyberpunk.json](presets/neon_cyberpunk.json) |
+| **Nordic Minimal**<br>Matte colors, rounded corners, clean look. | <img src="screenshots/nordic_minimal.png" width="600"> | [nordic_minimal.json](presets/nordic_minimal.json) |
+| **Glass Pill**<br>Windows 11 style, heavy blur, floating modules. | <img src="screenshots/glass_pill.png" width="600"> | [glass_pill.json](presets/glass_pill.json) |
+| **Red Alert**<br>High-density, server-monitor style. | <img src="screenshots/red_alert.png" width="600"> | [red_alert.json](presets/red_alert.json) |
 
 ## Directory Structure
 
