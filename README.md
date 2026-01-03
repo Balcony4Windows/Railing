@@ -25,12 +25,50 @@ Designed as a "Glass Box" alternative to the standard Windows taskbar, it priori
 
 Railing includes several built-in themes to get you started. You can find these configuration files in the `presets/` directory.
 
-| Theme | Preview | Source |
-| :--- | :--- | :--- |
-| **Neon Cyberpunk**<br>High contrast, retrowave aesthetic. | <img src="screenshots/neon_cyberpunk.png" width="600"> | [neon_cyberpunk.json](presets/neon_cyberpunk.json) |
-| **Nordic Minimal**<br>Matte colors, rounded corners, clean look. | <img src="screenshots/nordic_minimal.png" width="600"> | [nordic_minimal.json](presets/nordic_minimal.json) |
-| **Glass Pill**<br>Windows 11 style, heavy blur, floating modules. | <img src="screenshots/glass_pill.png" width="600"> | [glass_pill.json](presets/glass_pill.json) |
-| **Red Alert**<br>High-density, server-monitor style. | <img src="screenshots/red_alert.png" width="600"> | [red_alert.json](presets/red_alert.json) |
+---
+
+### Neon Cyberpunk  
+High contrast, retrowave aesthetic.
+
+<a href="screenshots/neon_cyberpunk.png">
+  <img src="screenshots/neon_cyberpunk.png" width="900">
+</a>
+
+**Source:** [`neon_cyberpunk.json`](presets/neon_cyberpunk.json)
+
+---
+
+### Nordic Minimal  
+Matte colors, rounded corners, clean look.
+
+<a href="screenshots/nordic_minimal.png">
+  <img src="screenshots/nordic_minimal.png" width="900">
+</a>
+
+**Source:** [`nordic_minimal.json`](presets/nordic_minimal.json)
+
+---
+
+### Glass Pill  
+Windows 11 style, heavy blur, floating modules.
+
+<a href="screenshots/glass_pill.png">
+  <img src="screenshots/glass_pill.png" width="900">
+</a>
+
+**Source:** [`glass_pill.json`](presets/glass_pill.json)
+
+---
+
+### Red Alert  
+High-density, server-monitor style.
+
+<a href="screenshots/red_alert.png">
+  <img src="screenshots/red_alert.png" width="900">
+</a>
+
+**Source:** [`red_alert.json`](presets/red_alert.json)
+
 
 ## Directory Structure
 
