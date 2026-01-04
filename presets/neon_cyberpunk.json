@@ -33,7 +33,7 @@
   },
   "cmd_btn": {
     "type": "custom",
-    "format": ">_TERM",
+    "format": ">_PWSH",
     "on_click": "exec:wt.exe",
     "style": { "fg": "#00FF00", "padding": [0, 10], "margin": [0, 0, 0, 0] },
     "states": { "hover": { "fg": "#AAFFAA", "bg": "#1000FF00" } }

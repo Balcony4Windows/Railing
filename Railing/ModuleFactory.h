@@ -23,6 +23,7 @@ public:
 		else if (cfg.type == "ping") return new PingModule(cfg);
 		else if (cfg.type == "weather") { return new WeatherModule(cfg); }
 		else if (cfg.type == "app_icon") return new AppIconModule(cfg);
+		else if (cfg.type == "dock") return new DockModule(cfg);
 
 		else if (cfg.type == "group") {
 			GroupModule *group = new GroupModule(cfg);

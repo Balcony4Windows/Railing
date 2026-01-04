@@ -72,9 +72,8 @@
   },
   "audio": {
     "type": "audio",
-    "format": "🔊 {vol}%",
-    "style": { "fg": "#FFFFFF", "padding": [0, 15], "margin": [4, 4, 4, 4], "radius": 16 },
-    "states": { "hover": { "bg": "#20FFFFFF" } }
+    "style": { "fg": "#FFFFFF", "padding": [0, 15], "margin": [0, 5, 0, 0], "radius": 16 },
+    "states": { "hover": { "bg": "#20FFFFFF", "radius": 20 } }
   },
   "tray": {
     "type": "tray",

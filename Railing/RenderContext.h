@@ -1,8 +1,10 @@
 #pragma once
 #include <d2d1.h>
 #include <dwrite.h>
+#include <wincodec.h>
 #include <string>
 #include <vector>
+#include "ThemeTypes.h"
 
 struct RenderContext {
     ID2D1RenderTarget *rt; /* D2D RESOURCES */
@@ -11,6 +13,7 @@ struct RenderContext {
     ID2D1SolidColorBrush *borderBrush;
 
     IDWriteFactory *writeFactory; /* FONTS */
+    IWICImagingFactory *wicFactory;
     IDWriteTextFormat *textFormat;
     IDWriteTextFormat *boldTextFormat = nullptr;
     IDWriteTextFormat *largeTextFormat;
@@ -23,6 +26,8 @@ struct RenderContext {
     float volume = 0.0f;
 	bool isMuted = false;
     ID2D1Bitmap *appIcon = nullptr;
+    const std::vector<WindowInfo> *windows; // Live app list
+    HWND foregroundWindow;
 
     float scale = 1.0f; /* WINDOW INFO */
     UINT dpi = 96;

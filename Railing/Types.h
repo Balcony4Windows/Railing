@@ -10,6 +10,9 @@ struct WindowInfo
 	HWND hwnd;
 	std::wstring title;
 	RECT rect;
+
+	std::wstring exePath;
+	bool isPinned = false;
 };
 
 typedef enum _WINDOWCOMPOSITIONATTRIB

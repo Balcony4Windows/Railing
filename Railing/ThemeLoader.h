@@ -73,7 +73,7 @@ public:
 		}
 
 		for (auto &[key, val] : j.items()) {
-			if (key == "global" || key == "layout") continue;
+			if (key == "global" || key == "layout" || key == "pinned") continue;
 
 			ModuleConfig mod;
 			mod.id = key;
@@ -87,7 +87,13 @@ public:
 			mod.baseStyle = Style();
 			if (val.contains("target")) mod.target = val["target"].get<std::string>();
 			if (val.contains("on_click")) mod.onClick = val["on_click"].get<std::string>();
-			if (val.contains("style")) mod.baseStyle = ParseStyle(val["style"]);
+			if (val.contains("style")) {
+				auto &s = val["style"];
+				mod.baseStyle = ParseStyle(s);
+				mod.dockIconSize = s.value("icon_size", 24.0f);
+				mod.dockSpacing = s.value("spacing", 8.0f);
+				mod.dockAnimSpeed = s.value("anim_speed", 0.25f);
+			}
 			if (val.contains("item_style")) mod.itemStyle = ParseStyle(val["item_style"]);
 			if (val.contains("modules")) mod.groupModules = val["modules"].get<std::vector<std::string>>();
 			if (val.contains("icon")) mod.icon = val["icon"].get<std::string>();
@@ -104,6 +110,13 @@ public:
 			}
 
 			config.modules[key] = mod;
+		}
+
+		if (j.contains("pinned") && j["pinned"].is_array()) {
+			for (auto &p : j["pinned"]) {
+				std::string pathStr = p.get<std::string>();
+				config.pinnedPaths.push_back(std::wstring(pathStr.begin(), pathStr.end()));
+			}
 		}
 		return config;
 	}

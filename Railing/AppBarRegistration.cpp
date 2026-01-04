@@ -19,9 +19,8 @@ void UnregisterAppBar(HWND hwnd)
 }
 
 // Calculate position and reserve screen space
-void UpdateAppBarPosition(HWND hwnd)
+void UpdateAppBarPosition(HWND hwnd, ThemeConfig &theme)
 {
-    ThemeConfig theme = ThemeLoader::Load("config.json");
 
     HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi = { sizeof(mi) };

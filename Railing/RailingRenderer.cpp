@@ -17,9 +17,8 @@
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
 
-RailingRenderer::RailingRenderer(HWND hwnd) : hwnd(hwnd)
+RailingRenderer::RailingRenderer(HWND hwnd, const ThemeConfig &config) : hwnd(hwnd), theme(config)
 {
-    theme = ThemeLoader::Load("config.json");
     if (theme.global.blur) theme.global.radius = 8.0f; // This is fixed by Windows :(
     char debugBuf[256];
     sprintf_s(debugBuf, "DEBUG: Loaded Config. Layout sizes: L=%d, C=%d, R=%d\n",
@@ -197,6 +196,9 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
 
     ctx.rt = pRenderTarget;
     ctx.writeFactory = pWriteFactory;
+    ctx.wicFactory = pWICFactory;
+    ctx.windows = &windows;
+    ctx.foregroundWindow = activeWindow;
     ctx.textFormat = pTextFormat;
     ctx.boldTextFormat = pTextFormatBold;
     ctx.iconFormat = pIconFormat;

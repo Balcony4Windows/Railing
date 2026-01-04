@@ -3,7 +3,9 @@
 #include <vector>
 #include <map>
 #include <d2d1.h>
+#include <d2d1_1.h>
 #include <nlohmann/json.hpp>
+#include "Types.h"
 
 struct Padding {
     float top = 0, right = 0, bottom = 0, left = 0;
@@ -83,6 +85,10 @@ struct ModuleConfig {
     std::map<std::string, Style> states; // If type == "workspaces" (active/urgent)
     Style itemStyle; // For workspace buttons
     std::string orientation = "horizontal";
+
+    float dockIconSize = 24.0f;
+    float dockSpacing = 8.0f;
+    float dockAnimSpeed = 0.25f;
 };
 
 // The Root Configuration
@@ -116,4 +122,5 @@ struct ThemeConfig {
     } layout;
 
     std::map<std::string, ModuleConfig> modules;
+    std::vector<std::wstring> pinnedPaths;
 };

@@ -7,6 +7,7 @@
 #include "ClockModule.h"
 #include "CpuModule.h"
 #include "CustomModule.h"
+#include "DockModule.h"
 #include "GpuModule.h"
 #include "GroupModule.h"
 #include "IconModule.h"

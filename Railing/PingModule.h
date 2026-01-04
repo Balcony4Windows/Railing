@@ -6,6 +6,7 @@
 #include <IPExport.h>
 #include <IcmpAPI.h>
 #include <mutex>
+#include "CommandExecutor.h"
 #pragma comment(lib, "IPHLPAPI.lib")
 #pragma comment(lib, "ws2_32.lib")
 
@@ -97,11 +98,12 @@ inline bool NetworkPoller::isRunning = false;
 class PingModule : public Module {
 	int lastRenderedPing = -999;
 	std::wstring cachedStr;
+
 public:
 	std::string targetIP;
 	std::atomic<int> lastPing = 0;
-	PingModule(const ModuleConfig &cfg) : Module(cfg)
-	{
+
+	PingModule(const ModuleConfig &cfg) : Module(cfg) {
 		targetIP = config.target.empty() ? "8.8.8.8" : config.target;
 		int interval = config.interval > 0 ? config.interval : 2000;
 		NetworkPoller::AddTask(this, targetIP, &lastPing, interval);
@@ -115,14 +117,9 @@ public:
 			lastRenderedPing = currentPing;
 			std::wstring valStr = (currentPing < 0) ? L"---" : std::to_wstring(currentPing);
 			std::string fmt = config.format.empty() ? "PING: {ping}ms" : config.format;
-			size_t pos = fmt.find("{ping}");
-			std::wstring wFmt(fmt.begin(), fmt.end());
-			if (pos != std::string::npos) {
-				cachedStr = wFmt;
-				cachedStr = FormatOutput(fmt, "{ping}", valStr);
-			}
-			else cachedStr = wFmt;
+			cachedStr = FormatOutput(fmt, "{ping}", valStr);
 		}
+
 		Style s = GetEffectiveStyle();
 		IDWriteTextFormat *fmt = (s.font_weight == "bold") ? ctx.boldTextFormat : ctx.textFormat;
 		IDWriteTextLayout *layout = GetLayout(ctx, cachedStr, fmt);
@@ -133,25 +130,22 @@ public:
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override {
 		Style s = GetEffectiveStyle();
 		int ms = lastPing;
-		std::wstring valStr = (ms < 0) ? L"---" : std::to_wstring(ms);
-
-		std::string txt = config.format.empty() ? "PING: {ping}ms" : config.format;
-		std::wstring text = FormatOutput(txt, "{ping}", valStr);
-
 		D2D1_COLOR_F color = s.fg;
 		for (const auto &th : config.thresholds) {
-			if (lastRenderedPing >= th.val) {
+			if (ms >= th.val) {
 				color = th.style.fg;
 				if (th.style.has_bg) s.bg = th.style.bg;
 			}
 		}
 
-		float pct = (lastRenderedPing < 0) ? 0.0f : (float)lastRenderedPing / 200.0f;
+		float pct = (ms < 0) ? 0.0f : (float)ms / 200.0f;
+		if (pct > 1.0f) pct = 1.0f;
 		DrawProgressBar(ctx, x, y, w, h, pct, color);
 
 		D2D1_RECT_F rect = D2D1::RectF(x, y, x + w, y + h);
 		IDWriteTextFormat *fmt = (s.font_weight == "bold") ? ctx.boldTextFormat : ctx.textFormat;
-		ctx.textBrush->SetColor(D2D1::ColorF(D2D1::ColorF::White));
+
+		ctx.textBrush->SetColor(s.fg);
 		ctx.rt->DrawTextW(cachedStr.c_str(), (UINT32)cachedStr.length(), fmt, rect, ctx.textBrush);
 	}
 };

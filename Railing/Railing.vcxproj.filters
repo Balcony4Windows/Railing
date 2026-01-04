@@ -108,6 +108,9 @@
     <ClInclude Include="WeatherModule.h">
       <Filter>Header Files\ModuleTypes</Filter>
     </ClInclude>
+    <ClInclude Include="DockModule.h">
+      <Filter>Header Files\ModuleTypes</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Railing.cpp">

@@ -162,6 +162,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="CommandExecutor.h" />
     <ClInclude Include="CpuModule.h" />
     <ClInclude Include="CustomModule.h" />
+    <ClInclude Include="DockModule.h" />
     <ClInclude Include="GpuModule.h" />
     <ClInclude Include="GpuStats.h" />
     <ClInclude Include="GroupModule.h" />

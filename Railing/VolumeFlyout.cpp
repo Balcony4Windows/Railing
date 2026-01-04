@@ -43,14 +43,6 @@ VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWrit
 }
 
 VolumeFlyout::~VolumeFlyout() {
-    if (pRenderTarget) pRenderTarget->Release();
-    if (pBgBrush) pBgBrush->Release();
-    if (pFgBrush) pFgBrush->Release();
-    if (pAccentBrush) pAccentBrush->Release();
-    if (pBorderBrush) pBorderBrush->Release();
-    if (pTextFormat) pTextFormat->Release();
-
-    if (hwnd) DestroyWindow(hwnd);
 }
 
 void VolumeFlyout::PositionWindow(RECT iconRect) {
@@ -291,20 +283,20 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             return 0;
 
         case WM_DESTROY:
-            self->hwnd = nullptr;
             if (self->pRenderTarget) { self->pRenderTarget->Release(); self->pRenderTarget = nullptr; }
-            if (self->pBgBrush) { self->pBgBrush->Release(); self->pBgBrush = nullptr; }
-            if (self->pAccentBrush) { self->pAccentBrush->Release(); self->pAccentBrush = nullptr; }
-            if (self->pFgBrush) { self->pFgBrush->Release(); self->pFgBrush = nullptr; }
+            if (self->pBgBrush) { self->pBgBrush->Release();      self->pBgBrush = nullptr; }
+            if (self->pAccentBrush) { self->pAccentBrush->Release();  self->pAccentBrush = nullptr; }
+            if (self->pFgBrush) { self->pFgBrush->Release();      self->pFgBrush = nullptr; }
+            if (self->pBorderBrush) { self->pBorderBrush->Release();  self->pBorderBrush = nullptr; }
+            if (self->pTextFormat) { self->pTextFormat->Release();   self->pTextFormat = nullptr; }
+            self->hwnd = nullptr; // Mark as closed
             if (Railing::instance && Railing::instance->flyout == self) {
                 Railing::instance->flyout = nullptr;
             }
             return 0;
-
         case WM_NCDESTROY:
             // FINAL CLEANUP: Delete the C++ Object
             delete self;
-            SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
             return 0;
         }
     }

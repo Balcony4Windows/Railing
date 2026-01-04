@@ -41,14 +41,14 @@
     "type": "custom",
     "format": "Web",
     "on_click": "exec:chrome.exe",
-    "style": { "fg": "#A3BE8C", "bg": "#FF3B4252", "padding": [0, 16], "margin": [8, 4, 8, 4], "radius": 4 },
+    "style": { "fg": "#A3BE8C", "bg": "#FF3B4252", "padding": [0, 8], "margin": [4, 4], "radius": 4 },
     "states": { "hover": { "bg": "#FFA3BE8C", "fg": "#2E3440" } }
   },
   "files": {
     "type": "custom",
     "format": "Files",
     "on_click": "exec:explorer.exe",
-    "style": { "fg": "#EBCB8B", "bg": "#FF3B4252", "padding": [0, 16], "margin": [8, 4, 8, 4], "radius": 4 },
+    "style": { "fg": "#EBCB8B", "bg": "#FF3B4252", "padding": [0, 8], "margin": [4, 4], "radius": 4 },
     "states": { "hover": { "bg": "#FFEBCB8B", "fg": "#2E3440" } }
   },
   "tray": {

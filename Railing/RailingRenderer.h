@@ -20,7 +20,7 @@ public:
         float volume = 0.0f;
         float isMuted = false;
     };
-    RailingRenderer(HWND hwnd);
+    RailingRenderer(HWND hwnd, const ThemeConfig &config);
     ~RailingRenderer();
 
     ThemeConfig theme;

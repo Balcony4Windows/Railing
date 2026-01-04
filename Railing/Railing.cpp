@@ -9,6 +9,7 @@
 #include "ModulesConcrete.h"
 #include "ThemeLoader.h"
 #include "CommandExecutor.h"
+#include <algorithm>
 
 #pragma comment(lib, "dwmapi.lib") 
 #pragma comment(lib, "d2d1")
@@ -36,11 +37,12 @@ void Railing::CheckForConfigUpdate()
         }
         if (CompareFileTime(&lastConfigWriteTime, &fileInfo.ftLastWriteTime) != 0) {
             lastConfigWriteTime = fileInfo.ftLastWriteTime;
+            cachedConfig = ThemeLoader::Load("config.json");
             if (renderer) renderer->Reload();
 
             UnregisterAppBar(hwndBar); // Re-register for size/position changes
             RegisterAppBar(hwndBar);
-            UpdateAppBarPosition(hwndBar);
+            UpdateAppBarPosition(hwndBar, cachedConfig);
             InvalidateRect(hwndBar, NULL, FALSE);
         }
     }
@@ -56,14 +58,16 @@ bool Railing::Initialize(HINSTANCE hInstance)
     stats.Initialize();
     gpuStats.Initialize();
 
-    ThemeConfig tempConfig = ThemeLoader::Load("config.json");
-    if (tempConfig.global.blur) tempConfig.global.radius = 1.0f; // This is fixed by Windows :(
-    hwndBar = CreateBarWindow(hInstance, tempConfig);
+    cachedConfig = ThemeLoader::Load("config.json");
+    this->pinnedApps = cachedConfig.pinnedPaths;
+    if (cachedConfig.global.blur) cachedConfig.global.radius = 1.0f; // This is fixed by Windows :(
+    hwndBar = CreateBarWindow(hInstance, cachedConfig);
     if (!hwndBar) return false;
     tooltips.Initialize(hwndBar);
     CheckForConfigUpdate(); // Initial load
+    GetTopLevelWindows(allWindows);
     RegisterAppBar(hwndBar);
-    UpdateAppBarPosition(hwndBar);
+    UpdateAppBarPosition(hwndBar, cachedConfig);
 
     RECT targetRect;
     GetWindowRect(hwndBar, &targetRect); // UpdateAppBarPosition calculated this for us
@@ -73,7 +77,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
     int centerY = targetRect.top + (finalH / 2);
     SendMessage(hwndBar, WM_PAINT, 0, 0);
     ShowWindow(hwndBar, SW_SHOW);
-    auto &anim = tempConfig.global.animation;
+    auto &anim = cachedConfig.global.animation;
     if (anim.enabled && anim.duration > 0) { // Calculate timing based on FPS
         int frameDelay = 1000 / anim.fps;
         int totalSteps = anim.duration / frameDelay;
@@ -99,7 +103,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
             Sleep(frameDelay);
         }
     }
-    UpdateAppBarPosition(hwndBar);
+    UpdateAppBarPosition(hwndBar, cachedConfig);
 
     // Register shell hook
     RegisterShellHookWindow(hwndBar);
@@ -345,6 +349,30 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 else if (type == "tray") newText = L"System Tray";
                 else if (type == "notification") newText = L"Notifications";
                 else if (type == "weather") newText = L"Weather Near Me";
+                else if (type == "dock") {
+                    DockModule *dock = (DockModule *)hitModule;
+                    float localX = ((float)pt.x / scale) - newRectF.left;
+                    float modW = newRectF.right - newRectF.left;
+                    Style s = dock->GetEffectiveStyle();
+                    float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
+                    float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+
+                    size_t count = self->allWindows.size();
+                    if (count > 0) {
+                        float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
+                        float bgWidth = modW - s.margin.left - s.margin.right;
+                        float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
+
+                        if (localX >= startX && localX <= (startX + totalIconWidth)) {
+                            float offset = localX - startX;
+                            int index = (int)(offset / (iSize + iSpace));
+                            float relativePos = fmod(offset, (iSize + iSpace));
+
+                            if (relativePos <= iSize && index >= 0 && index < count)
+                                newText = self->allWindows[index].title;
+                        }
+                    }
+                }
                 else if (type == "clock") {
                     SYSTEMTIME st; GetLocalTime(&st);
                     wchar_t buf[64];
@@ -486,8 +514,54 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
                     handled = true;
                 }
+                else if (type == "ping") {
+                    std::string action = m->config.onClick;
+                    if (!action.empty()) {
+                        CommandExecutor::Execute(action, hwnd);
+                        handled = true;
+                    }
+                }
                 else if (type == "notification") {
                     CommandExecutor::Execute("notification", hwnd);
+                    handled = true;
+                }
+                else if (type == "dock") {
+                    DockModule *dock = (DockModule *)m;
+
+                    D2D1_RECT_F modRect = self->renderer->GetModuleRect(id);
+                    float modW = modRect.right - modRect.left;
+                    float clickX = ((float)pt.x / scale) - modRect.left;
+
+                    Style s = dock->GetEffectiveStyle();
+                    float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
+                    float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+
+                    size_t count = self->allWindows.size();
+                    if (count > 0) {
+                        float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
+                        float bgWidth = modW - s.margin.left - s.margin.right;
+                        float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
+                        if (clickX >= startX && clickX <= (startX + totalIconWidth)) {
+                            float offset = clickX - startX;
+                            int index = (int)(offset / (iSize + iSpace));
+                            float relativePos = fmod(offset, (iSize + iSpace));
+
+                            if (relativePos <= iSize && index >= 0 && index < count) {
+                                WindowInfo &target = self->allWindows[index];
+
+                                if (target.hwnd == NULL) {
+                                    ShellExecuteW(NULL, L"open", target.exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                                }
+                                else {
+                                    if (target.hwnd == ::GetForegroundWindow()) ::ShowWindow(target.hwnd, SW_MINIMIZE);
+                                    else {
+                                        if (::IsIconic(target.hwnd)) ::ShowWindow(target.hwnd, SW_RESTORE);
+                                        ::SetForegroundWindow(target.hwnd);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     handled = true;
                 }
                 else if (type == "custom") {
@@ -498,13 +572,125 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     }
                 }
 
-                // If we found a handler, stop searching.
                 if (handled) break;
             }
         }
 
         return 0;
     }
+    case WM_RBUTTONUP:
+    {
+        if (!self || !self->renderer) break;
+
+        int mx = GET_X_LPARAM(lParam);
+        int my = GET_Y_LPARAM(lParam);
+        POINT pt = { mx, my };
+        POINT screenPt = pt;
+        ClientToScreen(hwnd, &screenPt);
+
+        float dpi = (float)GetDpiForWindow(hwnd);
+        float scale = dpi / 96.0f;
+        Module *hitModule = nullptr;
+        D2D1_RECT_F modRect = { 0 };
+
+        for (auto const &[id, cfg] : self->renderer->theme.modules) {
+            D2D1_RECT_F f = self->renderer->GetModuleRect(id);
+            if (f.right == 0.0f && f.bottom == 0.0f) continue;
+
+            RECT localR = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
+            if (PtInRect(&localR, pt)) {
+                hitModule = self->renderer->GetModule(id);
+                modRect = f;
+                break;
+            }
+        }
+
+        if (hitModule && hitModule->config.type == "dock") {
+            DockModule *dock = (DockModule *)hitModule;
+
+            float localX = ((float)pt.x / scale) - modRect.left;
+            float modW = modRect.right - modRect.left;
+            Style s = dock->GetEffectiveStyle();
+            float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
+            float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+
+            size_t count = self->allWindows.size();
+            float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
+            float bgWidth = modW - s.margin.left - s.margin.right;
+            float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
+
+            if (localX >= startX && localX <= (startX + totalIconWidth)) {
+                float offset = localX - startX;
+                int index = (int)(offset / (iSize + iSpace));
+                float relativePos = fmod(offset, (iSize + iSpace));
+
+                if (relativePos <= iSize && index >= 0 && index < count) {
+                    WindowInfo &targetWin = self->allWindows[index];
+
+                    HMENU hMenu = CreatePopupMenu();
+                    std::wstring header = targetWin.title;
+                    if (header.empty()) {
+                        header = targetWin.exePath.substr(targetWin.exePath.find_last_of(L"\\/") + 1);
+                    }
+                    AppendMenuW(hMenu, MF_STRING | MF_DISABLED, 0, header.c_str());
+                    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+
+                    if (targetWin.hwnd == NULL) AppendMenuW(hMenu, MF_STRING, 100, L"Launch");
+                    else AppendMenuW(hMenu, MF_STRING, 100, L"Open New Window");
+
+                    if (targetWin.isPinned) AppendMenuW(hMenu, MF_STRING, 101, L"Unpin");
+                    else AppendMenuW(hMenu, MF_STRING, 101, L"Pin");
+
+                    if (targetWin.hwnd != NULL) {
+                        AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                        AppendMenuW(hMenu, MF_STRING, 102, L"Close Window");
+                    }
+
+                    SetForegroundWindow(hwnd);
+                    int selection = TrackPopupMenu(hMenu, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RETURNCMD | TPM_NONOTIFY, screenPt.x, screenPt.y, 0, hwnd, NULL);
+                    DestroyMenu(hMenu);
+
+                    switch (selection) {
+                    case 100: // Open / Launch
+                    {
+                        std::wstring exePath = targetWin.exePath;
+                        if (exePath.empty() && targetWin.hwnd) exePath = Railing::GetWindowExePath(targetWin.hwnd);
+
+                        if (!exePath.empty()) {
+                            ShellExecuteW(NULL, L"open", exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                        }
+                        else {
+                            MessageBeep(MB_ICONWARNING);
+                        }
+                    }
+                    break;
+                    case 101: // Pin / Unpin
+                    {
+                        std::wstring path = targetWin.exePath;
+                        if (path.empty() && targetWin.hwnd) path = GetWindowExePath(targetWin.hwnd);
+
+                        auto it = std::find(self->pinnedApps.begin(), self->pinnedApps.end(), path);
+                        if (it != self->pinnedApps.end()) {
+                            self->pinnedApps.erase(it); // Remove
+                        }
+                        else {
+                            self->pinnedApps.push_back(path); // Add
+                        }
+
+                        self->SavePinnedApps();
+                        self->GetTopLevelWindows(self->allWindows);
+                        InvalidateRect(hwnd, NULL, FALSE);
+                    }
+                    break;
+                    case 102: // Close
+                        if (targetWin.hwnd) PostMessage(targetWin.hwnd, WM_CLOSE, 0, 0);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return 0;
     case WM_TIMER:
         if (wParam == 1 && self) self->UpdateSystemStats();
         return 0;
@@ -561,7 +747,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
         return 0;
     case WM_RAILING_APPBAR: // Re-check size
-        if (wParam == ABN_POSCHANGED) UpdateAppBarPosition(hwnd);
+        if (wParam == ABN_POSCHANGED) UpdateAppBarPosition(hwnd, self->cachedConfig);
         return 0;
     case WM_DESTROY:
         UnregisterAppBar(hwnd);
@@ -569,7 +755,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             UnhookWinEvent(self->titleHook);
             self->titleHook = nullptr;
         }
-        if (self->flyout) delete self->flyout;
+        if (self->flyout) DestroyWindow(self->flyout->hwnd);
         if (self->trayFlyout) delete self->trayFlyout;
         UnregisterHotKey(hwnd, HOTKEY_KILL_THIS);
         PostQuitMessage(0);
@@ -610,7 +796,7 @@ void Railing::UpdateSystemStats() {
 void Railing::DrawBar(HWND hwnd) {
     HWND foreground = GetForegroundWindow();
 
-    if (!renderer) renderer = new RailingRenderer(hwnd);
+    if (!renderer) renderer = new RailingRenderer(hwnd, cachedConfig);
     RECT rc; GetWindowRect(hwnd, &rc);
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
@@ -628,27 +814,51 @@ void Railing::DrawBar(HWND hwnd) {
 
 void Railing::GetTopLevelWindows(std::vector<WindowInfo> &outWindows)
 {
-    outWindows.clear();
-    std::pair<Railing *, std::vector<WindowInfo> *> params(this, &outWindows);
+    std::vector<WindowInfo> runningWindows;
+    std::pair<Railing *, std::vector<WindowInfo> *> params(this, &runningWindows);
 
     EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
         auto *ctx = reinterpret_cast<std::pair<Railing *, std::vector<WindowInfo> *> *>(lParam);
         Railing *self = ctx->first;
-        auto *out = ctx->second;
+        auto *list = ctx->second;
 
-
+        if (!IsWindowVisible(hwnd)) return TRUE;
         wchar_t title[256];
         GetWindowText(hwnd, title, 256);
         if (title[0] == L'\0') return TRUE;
 
-        if (!self->IsAppWindow(hwnd)) return TRUE;
-
-        RECT rect;
-        GetWindowRect(hwnd, &rect);
-
-        out->push_back({ hwnd, title, rect });
+        if (self->IsAppWindow(hwnd)) {
+            std::wstring exe = GetWindowExePath(hwnd);
+            RECT r; GetWindowRect(hwnd, &r);
+            list->push_back({ hwnd, title, r, exe, false });
+        }
         return TRUE;
         }, reinterpret_cast<LPARAM>(&params));
+
+    std::vector<WindowInfo> finalList;
+
+    for (const auto &pinPath : pinnedApps) {
+        bool foundRunning = false;
+        auto it = std::find_if(runningWindows.begin(), runningWindows.end(),
+            [&pinPath](const WindowInfo &w) { return w.exePath == pinPath; });
+
+        if (it != runningWindows.end()) {
+            it->isPinned = true;
+            finalList.push_back(*it);
+            runningWindows.erase(it);
+        }
+        else {
+            WindowInfo ghost;
+            ghost.hwnd = NULL;
+            ghost.title = L"";
+            ghost.exePath = pinPath;
+            ghost.isPinned = true;
+            finalList.push_back(ghost);
+        }
+    }
+
+    finalList.insert(finalList.end(), runningWindows.begin(), runningWindows.end());
+    outWindows = finalList;
 }
 
 BOOL Railing::IsAppWindow(HWND hwnd)
