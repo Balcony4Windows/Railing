@@ -13,6 +13,7 @@
 #include "GpuStats.h"
 #include "AppBarRegistration.h"
 #include <Psapi.h>
+#include "WorkspaceManager.h"
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)
@@ -46,6 +47,8 @@ public:
 	RailingRenderer *renderer = nullptr;
 	VolumeFlyout *flyout = nullptr;
 	TrayFlyout *trayFlyout;
+
+	WorkspaceManager workspaces;
 private:
 	HWND CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config);
 	void DrawBar(HWND hwnd); 
@@ -118,6 +121,12 @@ private:
 	int cachedCpuUsage = 0;
 	int cachedRamUsage = 0;
 	void UpdateSystemStats();
+
+	bool isHidden = false;
+	bool isHoveringBar = false;
+	float showProgress = 1.0f;
+	ULONGLONG lastInteractionTime = 0;
+	bool IsMouseAtEdge();
 
 	HWND hwndTooltip = nullptr;
 	std::wstring lastTooltipText = L"";

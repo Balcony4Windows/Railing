@@ -105,6 +105,8 @@ struct ThemeConfig {
         Padding margin;
         std::string font = "Segoe UI";
         std::string monitor = "primary";
+        bool autoHide = false;
+        int autoHideDelay = 500;
         float fontSize = 14.0f;
         D2D1_COLOR_F background = D2D1::ColorF(0, 0, 0, 0);
         bool blur = true;

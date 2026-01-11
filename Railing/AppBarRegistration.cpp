@@ -1,4 +1,5 @@
 #include "AppBarRegistration.h"
+#include "Railing.h"
 
 // Register the window as an AppBar
 void RegisterAppBar(HWND hwnd)
@@ -18,9 +19,11 @@ void UnregisterAppBar(HWND hwnd)
     SHAppBarMessage(ABM_REMOVE, &abd);
 }
 
-// Calculate position and reserve screen space
 void UpdateAppBarPosition(HWND hwnd, ThemeConfig &theme)
 {
+    static bool isUpdating = false;
+    if (isUpdating) return;
+    isUpdating = true;
 
     HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi = { sizeof(mi) };
@@ -28,8 +31,6 @@ void UpdateAppBarPosition(HWND hwnd, ThemeConfig &theme)
 
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;
-
-    // 1. Calculate Margins & Dimensions
     int thickness = (int)(theme.global.height * scale);
     int mLeft = (int)(theme.global.margin.left * scale);
     int mRight = (int)(theme.global.margin.right * scale);
@@ -43,6 +44,7 @@ void UpdateAppBarPosition(HWND hwnd, ThemeConfig &theme)
     else if (theme.global.position == "left") abd.uEdge = ABE_LEFT;
     else if (theme.global.position == "right") abd.uEdge = ABE_RIGHT;
     else abd.uEdge = ABE_TOP;
+
     int reservedThickness = thickness;
     if (abd.uEdge == ABE_TOP || abd.uEdge == ABE_BOTTOM) reservedThickness += mTop + mBottom;
     else reservedThickness += mLeft + mRight;
@@ -67,35 +69,44 @@ void UpdateAppBarPosition(HWND hwnd, ThemeConfig &theme)
     else if (abd.uEdge == ABE_TOP) abd.rc.bottom = abd.rc.top + reservedThickness;
     else if (abd.uEdge == ABE_BOTTOM) abd.rc.top = abd.rc.bottom - reservedThickness;
 
-    SHAppBarMessage(ABM_SETPOS, &abd);
+    if (theme.global.autoHide) {
+        APPBARDATA hiddenAbd = abd;
+        hiddenAbd.rc = { 0, 0, 0, 0 };
+        SHAppBarMessage(ABM_SETPOS, &hiddenAbd);
+    }
+    else SHAppBarMessage(ABM_SETPOS, &abd);
 
-    int finalX, finalY, finalW, finalH;
+    if (!theme.global.autoHide) {
 
-    if (abd.uEdge == ABE_TOP) {
-        finalX = abd.rc.left + mLeft;
-        finalY = abd.rc.top + mTop;
-        finalW = (abd.rc.right - abd.rc.left) - mLeft - mRight;
-        finalH = thickness; // Use strict height
-    }
-    else if (abd.uEdge == ABE_BOTTOM) {
-        finalX = abd.rc.left + mLeft;
-        finalY = abd.rc.bottom - mBottom - thickness;
-        finalW = (abd.rc.right - abd.rc.left) - mLeft - mRight;
-        finalH = thickness;
-    }
-    else if (abd.uEdge == ABE_LEFT) {
-        finalX = abd.rc.left + mLeft;
-        finalY = abd.rc.top + mTop;
-        finalW = thickness;
-        finalH = (abd.rc.bottom - abd.rc.top) - mTop - mBottom;
-    }
-    else { // Right
-        finalX = abd.rc.right - mRight - thickness;
-        finalY = abd.rc.top + mTop;
-        finalW = thickness;
-        finalH = (abd.rc.bottom - abd.rc.top) - mTop - mBottom;
-    }
+        int finalX, finalY, finalW, finalH;
 
-    MoveWindow(hwnd, finalX, finalY, finalW, finalH, TRUE);
+        if (abd.uEdge == ABE_TOP) {
+            finalX = abd.rc.left + mLeft;
+            finalY = abd.rc.top + mTop;
+            finalW = (abd.rc.right - abd.rc.left) - mLeft - mRight;
+            finalH = thickness; // Use strict height
+        }
+        else if (abd.uEdge == ABE_BOTTOM) {
+            finalX = abd.rc.left + mLeft;
+            finalY = abd.rc.bottom - mBottom - thickness;
+            finalW = (abd.rc.right - abd.rc.left) - mLeft - mRight;
+            finalH = thickness;
+        }
+        else if (abd.uEdge == ABE_LEFT) {
+            finalX = abd.rc.left + mLeft;
+            finalY = abd.rc.top + mTop;
+            finalW = thickness;
+            finalH = (abd.rc.bottom - abd.rc.top) - mTop - mBottom;
+        }
+        else { // Right
+            finalX = abd.rc.right - mRight - thickness;
+            finalY = abd.rc.top + mTop;
+            finalW = thickness;
+            finalH = (abd.rc.bottom - abd.rc.top) - mTop - mBottom;
+        }
+
+        MoveWindow(hwnd, finalX, finalY, finalW, finalH, TRUE);
+    }
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    isUpdating = false;
 }

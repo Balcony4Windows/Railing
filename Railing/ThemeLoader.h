@@ -46,6 +46,8 @@ public:
 			config.global.font = g.value("font", "Segoe UI");
 			config.global.fontSize = g.value("font_size", 14.0f);
 			config.global.blur = g.value("blur", true);
+			config.global.autoHide = g.value("auto_hide", false);
+			config.global.autoHideDelay = g.value("hide_delay", 500);
 
 			if (g.contains("animation")) {
 				auto &a = g["animation"];

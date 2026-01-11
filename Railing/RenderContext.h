@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "ThemeTypes.h"
+#include "WorkspaceManager.h"
 
 struct RenderContext {
     ID2D1RenderTarget *rt; /* D2D RESOURCES */
@@ -26,8 +27,10 @@ struct RenderContext {
     float volume = 0.0f;
 	bool isMuted = false;
     ID2D1Bitmap *appIcon = nullptr;
+
     const std::vector<WindowInfo> *windows; // Live app list
     HWND foregroundWindow;
+    WorkspaceManager *workspaces;
 
     float scale = 1.0f; /* WINDOW INFO */
     UINT dpi = 96;

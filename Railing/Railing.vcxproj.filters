@@ -111,6 +111,9 @@
     <ClInclude Include="DockModule.h">
       <Filter>Header Files\ModuleTypes</Filter>
     </ClInclude>
+    <ClInclude Include="WorkspaceManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Railing.cpp">

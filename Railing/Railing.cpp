@@ -66,6 +66,10 @@ bool Railing::Initialize(HINSTANCE hInstance)
     tooltips.Initialize(hwndBar);
     CheckForConfigUpdate(); // Initial load
     GetTopLevelWindows(allWindows);
+
+    for (const auto &win : allWindows) workspaces.AddWindow(win.hwnd);
+    for (int i = 0; i < 5; i++) RegisterHotKey(hwndBar, 100 + i, MOD_ALT | MOD_NOREPEAT, 0x31 + i);
+
     RegisterAppBar(hwndBar);
     UpdateAppBarPosition(hwndBar, cachedConfig);
 
@@ -119,6 +123,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
         WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     SetTimer(hwndBar, 1, 500, NULL);
+    SetTimer(hwndBar, 2, 16, NULL); // Animation/autohide (60 fps)
 
     flyout = new VolumeFlyout(hInstance,
         renderer->GetFactory(),
@@ -250,6 +255,14 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         if (wParam == HOTKEY_KILL_THIS && self) {
             DestroyWindow(hwnd);
         }
+        else if (wParam >= 100 && wParam <= 104 && self) {
+            int idx = (int)wParam - 100;
+            self->workspaces.SwitchWorkspace(idx);
+            Module *m = self->renderer->GetModule("workspaces");
+            if (m) static_cast<WorkspacesModule *>(m)->SetActiveIndex(idx);
+            self->GetTopLevelWindows(self->allWindows);
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
         return 0;
     case WM_RAILING_CMD:
         if (wParam == CMD_SWITCH_WORKSPACE && self && self->renderer) {
@@ -261,6 +274,32 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             }
         }
         return 0;
+    case WM_MOUSEWHEEL:
+        if (self) {
+            POINT pt; GetCursorPos(&pt);
+            Module *m = self->renderer->GetModule("workspaces");
+
+            if (m) {
+                short delta = GET_WHEEL_DELTA_WPARAM(wParam);
+                int current = self->workspaces.currentWorkspace;
+                int count = 5;
+
+                int next = current;
+                if (delta > 0) next--; else next++;
+
+                if (next < 0) next = count - 1;
+                if (next >= 0) next = 0;
+
+                if (next != current) {
+                    self->workspaces.SwitchWorkspace(next);
+                    WorkspacesModule *ws = (WorkspacesModule *)m;
+                    ws->SetActiveIndex(next);
+                    self->GetTopLevelWindows(self->allWindows);
+                    InvalidateRect(hwnd, NULL, FALSE);
+                }
+            }
+        }
+        break;
     case WM_MOUSEMOVE:
         if (self && self->renderer) {
             if (!self->isTrackingMouse) {
@@ -302,8 +341,12 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 bool isOver = IsHovering(id.c_str(), &currentRect);
 
                 if (isOver) {
-                    hitModule = m;
-                    newRectF = currentRect;
+                    bool isGroup = m->config.type == "group";
+                    bool existingIsSpecific = (hitModule && hitModule->config.type != "group");
+                    if (!hitModule || !existingIsSpecific || !isGroup) {
+                        hitModule = m;
+                        newRectF = currentRect;
+                    }
                 }
 
                 if (m->config.type == "workspaces") {
@@ -357,7 +400,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
                     float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
 
-                    size_t count = self->allWindows.size();
+                    size_t count = dock->GetCount();
                     if (count > 0) {
                         float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
                         float bgWidth = modW - s.margin.left - s.margin.right;
@@ -369,7 +412,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                             float relativePos = fmod(offset, (iSize + iSpace));
 
                             if (relativePos <= iSize && index >= 0 && index < count)
-                                newText = self->allWindows[index].title;
+                                newText = dock->GetTitleAtIndex(index);
                         }
                     }
                 }
@@ -477,8 +520,10 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     }
 
                     if (index >= 0 && index < ws->count) {
-                        ws->SetActiveIndex(index);
-                        InvalidateRect(hwnd, NULL, FALSE);
+                        self->workspaces.SwitchWorkspace(index); // Update logic
+                        ws->SetActiveIndex(index); // Update visuals
+                        self->GetTopLevelWindows(self->allWindows);
+                        InvalidateRect(hwnd, NULL, FALSE); // force a refresh
                     }
                     if (ws->hoveredIndex != index) {
                         ws->hoveredIndex = index;
@@ -536,24 +581,41 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
                     float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
 
-                    size_t count = self->allWindows.size();
+                    int count = dock->GetCount();
+
                     if (count > 0) {
                         float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
                         float bgWidth = modW - s.margin.left - s.margin.right;
                         float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
+
                         if (clickX >= startX && clickX <= (startX + totalIconWidth)) {
                             float offset = clickX - startX;
                             int index = (int)(offset / (iSize + iSpace));
                             float relativePos = fmod(offset, (iSize + iSpace));
 
                             if (relativePos <= iSize && index >= 0 && index < count) {
-                                WindowInfo &target = self->allWindows[index];
+                                WindowInfo target = dock->GetWindowInfoAtIndex(index);
 
                                 if (target.hwnd == NULL) {
                                     ShellExecuteW(NULL, L"open", target.exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
                                 }
                                 else {
-                                    if (target.hwnd == ::GetForegroundWindow()) ::ShowWindow(target.hwnd, SW_MINIMIZE);
+                                    if (self->workspaces.managedWindows.count(target.hwnd)) {
+                                        int targetWksp = self->workspaces.managedWindows[target.hwnd];
+
+                                        if (targetWksp != self->workspaces.currentWorkspace) {
+                                            self->workspaces.SwitchWorkspace(targetWksp);
+                                            Module *wsMod = self->renderer->GetModule("workspaces");
+                                            if (wsMod) ((WorkspacesModule *)wsMod)->SetActiveIndex(targetWksp);
+
+                                            self->GetTopLevelWindows(self->allWindows);
+                                            InvalidateRect(hwnd, NULL, FALSE);
+                                        }
+                                    }
+
+                                    if (target.hwnd == ::GetForegroundWindow()) {
+                                        ::ShowWindow(target.hwnd, SW_MINIMIZE);
+                                    }
                                     else {
                                         if (::IsIconic(target.hwnd)) ::ShowWindow(target.hwnd, SW_RESTORE);
                                         ::SetForegroundWindow(target.hwnd);
@@ -691,9 +753,88 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
     }
     return 0;
-    case WM_TIMER:
-        if (wParam == 1 && self) self->UpdateSystemStats();
-        return 0;
+case WM_TIMER:
+    if (wParam == 1 && self) self->UpdateSystemStats();
+
+    if (wParam == 2 && self && self->cachedConfig.global.autoHide) {
+        POINT pt; GetCursorPos(&pt);
+        RECT barRect; GetWindowRect(hwnd, &barRect);
+
+        std::string pos = self->cachedConfig.global.position;
+        int screenW = GetSystemMetrics(SM_CXSCREEN);
+        int screenH = GetSystemMetrics(SM_CYSCREEN);
+
+        if (pos == "top")    barRect.top = 0;
+        if (pos == "bottom") barRect.bottom = screenH;
+        if (pos == "left")   barRect.left = 0;
+        if (pos == "right")  barRect.right = screenW;
+
+        bool mouseOver = PtInRect(&barRect, pt);
+        bool flyoutOpen = (self->flyout && self->flyout->IsVisible()) ||
+            (self->trayFlyout && self->trayFlyout->IsVisible());
+
+        bool shouldShow = false;
+
+        if (flyoutOpen || mouseOver || self->IsMouseAtEdge()) {
+            shouldShow = true;
+            self->lastInteractionTime = GetTickCount64();
+        }
+        else {
+            ULONGLONG diff = GetTickCount64() - self->lastInteractionTime;
+            if (diff < self->cachedConfig.global.autoHideDelay) shouldShow = true;
+        }
+
+        float oldProgress = self->showProgress; // Capture state before update
+        float speed = 0.15f;
+        if (shouldShow) {
+            self->showProgress += speed;
+            if (self->showProgress > 1.0f) self->showProgress = 1.0f;
+        }
+        else {
+            self->showProgress -= speed;
+            if (self->showProgress < 0.0f) self->showProgress = 0.0f;
+        }
+
+        bool progressChanged = (self->showProgress != oldProgress);
+        bool stateChanged = (shouldShow != !self->isHidden);
+
+        if (progressChanged || stateChanged) {
+
+            self->isHidden = !shouldShow;
+
+            float dpi = (float)GetDpiForWindow(hwnd);
+            float scale = dpi / 96.0f;
+            int h = (int)(self->cachedConfig.global.height * scale); // Height
+
+            int mTop = (int)(self->cachedConfig.global.margin.top * scale);
+            int mBottom = (int)(self->cachedConfig.global.margin.bottom * scale);
+            int mLeft = (int)(self->cachedConfig.global.margin.left * scale);
+            int mRight = (int)(self->cachedConfig.global.margin.right * scale);
+            int x = 0, y = 0, w = 0;
+
+            if (pos == "bottom") {
+                int shownY = screenH - mBottom - h;
+                int hiddenY = screenH;
+
+                y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
+
+                x = mLeft;
+                w = screenW - mLeft - mRight;
+            }
+            else if (pos == "top") {
+                int shownY = mTop;
+                int hiddenY = -h;
+
+                y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
+
+                x = mLeft;
+                w = screenW - mLeft - mRight;
+            }
+            // TODO: Add Left/Right logic here
+            SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+    }
+    return 0;
     case WM_SIZE:
         if (self && self->renderer) {
             self->renderer->Resize();
@@ -762,6 +903,12 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         return 0;
     default:
         if (uMsg == self->shellMsgId) {
+            if (wParam == 1) {
+                HWND hNew = (HWND)lParam;
+                if (self->IsAppWindow(hNew)) { // Only track actual apps
+                    self->workspaces.AddWindow(hNew);
+                }
+            }
             self->needsWindowRefresh = true; // Flag for next paint
             InvalidateRect(hwnd, nullptr, FALSE);
         }
@@ -796,7 +943,10 @@ void Railing::UpdateSystemStats() {
 void Railing::DrawBar(HWND hwnd) {
     HWND foreground = GetForegroundWindow();
 
-    if (!renderer) renderer = new RailingRenderer(hwnd, cachedConfig);
+    if (!renderer) {
+        renderer = new RailingRenderer(hwnd, cachedConfig);
+        renderer->pWorkspaceManager = &workspaces;
+    }
     RECT rc; GetWindowRect(hwnd, &rc);
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
@@ -859,6 +1009,21 @@ void Railing::GetTopLevelWindows(std::vector<WindowInfo> &outWindows)
 
     finalList.insert(finalList.end(), runningWindows.begin(), runningWindows.end());
     outWindows = finalList;
+}
+
+bool Railing::IsMouseAtEdge()
+{
+    POINT pt; GetCursorPos(&pt);
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    std::string pos = cachedConfig.global.position;
+    int tolerance = 2; // How close to the edge
+
+    if (pos == "bottom") return pt.y >= screenH - tolerance;
+    else if (pos == "top") return pt.y <= tolerance;
+    else if (pos == "left") return pt.x <= tolerance;
+    else if (pos == "right") return pt.x >= screenW - tolerance;
+    else return false;
 }
 
 BOOL Railing::IsAppWindow(HWND hwnd)

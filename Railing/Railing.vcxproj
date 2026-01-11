@@ -184,6 +184,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="VolumeFlyout.h" />
     <ClInclude Include="WeatherModule.h" />
     <ClInclude Include="WindowManager.h" />
+    <ClInclude Include="WorkspaceManager.h" />
     <ClInclude Include="WorkspacesModule.h" />
   </ItemGroup>
   <ItemGroup>

@@ -196,6 +196,7 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
 
     ctx.rt = pRenderTarget;
     ctx.writeFactory = pWriteFactory;
+    ctx.workspaces = pWorkspaceManager;
     ctx.wicFactory = pWICFactory;
     ctx.windows = &windows;
     ctx.foregroundWindow = activeWindow;

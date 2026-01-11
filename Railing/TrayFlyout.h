@@ -8,8 +8,6 @@
 struct TrayIconData {
     HICON hIcon;
     RECT rect;
-    // Note: We don't store D2D1Bitmap here directly to keep data/render separation clean, 
-    // but you could. I'll use a parallel vector in the class.
 };
 
 class TrayFlyout {
@@ -19,6 +17,7 @@ public:
 
     void Toggle(RECT iconRect);
     void Draw();
+    bool IsVisible() { return IsWindowVisible(hwnd); }
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 

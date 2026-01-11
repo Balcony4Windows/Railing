@@ -40,6 +40,8 @@ public:
     Module *GetModule(std::string id);
     RECT GetAppIconRect() { return iconClickRect; }
 
+    WorkspaceManager *pWorkspaceManager;
+
     ID2D1Factory *GetFactory() const { return pFactory; }
     IWICImagingFactory *GetWICFactory() const { return pWICFactory; }
     IDWriteFactory *GetWriteFactory() const { return pWriteFactory; }
