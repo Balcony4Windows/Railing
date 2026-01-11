@@ -9,6 +9,7 @@
 
 struct RenderContext {
     ID2D1RenderTarget *rt; /* D2D RESOURCES */
+    ID2D1Factory *factory;
 	ID2D1SolidColorBrush *bgBrush;
     ID2D1SolidColorBrush *textBrush;
     ID2D1SolidColorBrush *borderBrush;
@@ -29,6 +30,7 @@ struct RenderContext {
     ID2D1Bitmap *appIcon = nullptr;
 
     const std::vector<WindowInfo> *windows; // Live app list
+    std::vector<std::wstring> *pinnedApps;
     HWND foregroundWindow;
     WorkspaceManager *workspaces;
 

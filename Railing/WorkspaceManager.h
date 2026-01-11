@@ -13,6 +13,10 @@ public:
 		if (managedWindows.find(hwnd) == managedWindows.end()) managedWindows[hwnd] = currentWorkspace;
 	}
 
+    void RemoveWindow(HWND hwnd) {
+        managedWindows.erase(hwnd);
+    }
+
 	static BOOL CALLBACK CaptureZOrderProc(HWND hwnd, LPARAM lParam) {
 		auto *params = (std::pair<WorkspaceManager *, std::vector<HWND>*>*)lParam;
 		WorkspaceManager *self = params->first;

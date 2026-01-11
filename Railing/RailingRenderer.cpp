@@ -147,7 +147,7 @@ void RailingRenderer::Reload()
     Resize();
 }
 
-void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWindow)
+void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::vector<std::wstring> &pinnedApps, HWND activeWindow)
 {
     if (!pRenderTarget) return;
 
@@ -199,6 +199,7 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     ctx.workspaces = pWorkspaceManager;
     ctx.wicFactory = pWICFactory;
     ctx.windows = &windows;
+    ctx.pinnedApps = (std::vector<std::wstring> *) &pinnedApps;
     ctx.foregroundWindow = activeWindow;
     ctx.textFormat = pTextFormat;
     ctx.boldTextFormat = pTextFormatBold;
@@ -206,6 +207,7 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, HWND activeWi
     ctx.emojiFormat = pEmojiFormat;
     ctx.textBrush = pTextBrush;
     ctx.bgBrush = pBgBrush;
+    ctx.factory = pFactory;
     ctx.borderBrush = pBorderBrush;
     ctx.cpuUsage = currentStats.cpuUsage;
     ctx.gpuTemp = currentStats.gpuTemp;

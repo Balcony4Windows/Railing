@@ -2,6 +2,8 @@
 #include <shellapi.h>
 #include <vector>
 #include <sstream>
+#include <iomanip>
+#include <map>
 #include <powrprof.h> // For sleep/hibernate if needed
 #pragma comment(lib, "PowrProf.lib")
 
@@ -27,7 +29,26 @@ void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {
         // Only works via COM usually, but this shortcut works often
         ShellExecute(NULL, NULL, L"explorer.exe", L"Shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}", NULL, SW_SHOWNORMAL);
     }
+    else if (command.rfind("search:", 0) == 0) {
+        std::string param = command.substr(7); // search:
+        std::string engine = "google";
+        std::string term = param;
 
+        size_t splitPos = param.find(':');
+        if (splitPos != std::string::npos) {
+            std::string possibleEngine = param.substr(0, splitPos);
+            bool isEngine = (possibleEngine == "bing" || possibleEngine == "ddg"
+                || possibleEngine == "youtube" || possibleEngine == "yt"
+                || possibleEngine == "yahoo");
+
+            if (isEngine) {
+                engine = possibleEngine;
+                term = param.substr(splitPos + 1);
+            }
+        }
+
+        SearchWeb(term, engine);
+    }
     else if (command.rfind("exec:", 0) == 0) {
         OpenProcess(command.substr(5));
     }
@@ -37,6 +58,41 @@ void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {
         std::wstring wtarget(target.begin(), target.end());
         ShellExecuteW(NULL, L"open", wtarget.c_str(), NULL, NULL, SW_SHOWNORMAL);
     }
+}
+
+inline std::string UrlEncode(const std::string &value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+    for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
+        std::string::value_type c = (*i);
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+            continue;
+        }
+        if (c == ' ') {
+            escaped << '+';
+            continue;
+        }
+        escaped << std::uppercase;
+        escaped << '%' << std::setw(2) << int((unsigned char)c);
+        escaped << std::nouppercase;
+    }
+    return escaped.str();
+}
+
+void CommandExecutor::SearchWeb(std::string term, std::string engine="google") {
+    if (term.empty()) return;
+    std::string baseUrl = "https://www.google.com/search?q="; // Default
+
+    if (engine == "bing") baseUrl = "https://www.bing.com/search?q=";
+    else if (engine == "ddg" || engine == "duckduckgo") baseUrl = "https://duckduckgo.com/?q=";
+    else if (engine == "youtube" || engine == "yt") baseUrl = "https://www.youtube.com/results?search_query=";
+    else if (engine == "yahoo") baseUrl = "https://search.yahoo.com/search?p=";
+
+    std::string fullUrl = baseUrl + UrlEncode(term);
+    std::wstring wUrl(fullUrl.begin(), fullUrl.end());
+    ShellExecuteW(NULL, L"open", wUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
 }
 
 void CommandExecutor::SendWinKey(char key) {

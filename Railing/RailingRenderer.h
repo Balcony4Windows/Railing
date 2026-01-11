@@ -31,7 +31,7 @@ public:
     SystemStatusData currentStats;
 
     void Reload();
-    void Draw(const std::vector<WindowInfo> &windows, HWND activeWindow);
+    void Draw(const std::vector<WindowInfo> &windows, const std::vector<std::wstring> &pinnedApps, HWND activeWindow);
     void Resize();
     static void EnableBlur(HWND hwnd, DWORD nColor);
     void UpdateBlurRegion();

@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include "Windows.h"
+#include "Railing.h"
 
 class ThemeLoader
 {
@@ -151,7 +152,7 @@ private:
 		if (j.contains("font_weight")) { s.font_weight = j["font_weight"]; s.has_font_weight = true; }
 		if (j.contains("border_width")) { s.borderWidth = j.value("border_width", 0.0f); s.has_border = true; }
 		if (j.contains("border_color")) s.borderColor = ParseColor(j["border_color"]);
-
+		if (j.contains("indicator")) s.indicator = ParseColor(j["indicator"]);
 		return s;
 	}
 };

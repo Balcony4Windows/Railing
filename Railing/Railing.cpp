@@ -15,12 +15,10 @@
 #pragma comment(lib, "d2d1")
 #pragma comment(lib, "shell32.lib")
 
-Railing::Railing()
-{
-}
+Railing::Railing() {}
 Railing::~Railing() = default;
-
 Railing *Railing::instance = nullptr;
+UINT WM_SHELLHOOKMESSAGE = RegisterWindowMessageW(L"SHELLHOOK");
 
 void Railing::CheckForConfigUpdate()
 {
@@ -109,14 +107,12 @@ bool Railing::Initialize(HINSTANCE hInstance)
     }
     UpdateAppBarPosition(hwndBar, cachedConfig);
 
-    // Register shell hook
+    // Register shell hooks
     RegisterShellHookWindow(hwndBar);
     UINT shellHookMsg = RegisterWindowMessage(L"SHELLHOOK");
     shellMsgId = shellHookMsg;
 
     RegisterHotKey(hwndBar, HOTKEY_KILL_THIS, MOD_CONTROL | MOD_SHIFT, 0x51); // Ctrl + Shft + Q to kill explorer (for testing)
-
-    // Listen for name changes
     titleHook = SetWinEventHook(
         EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE,
         nullptr, Railing::WinEventProc, 0, 0,
@@ -150,24 +146,20 @@ HWND Railing::CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config)
     wc.lpszClassName = CLASS_NAME;
     wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
     RegisterClass(&wc);
-
     // Get Monitor Dimensions
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
-
     // Scale Logic
     HDC hdc = GetDC(NULL);
     int dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
     ReleaseDC(NULL, hdc);
     float scale = dpiY / 96.0f;
-
     // Dimensions
     int thickness = (int)(config.global.height * scale);
     int mLeft = (int)(config.global.margin.left * scale);
     int mRight = (int)(config.global.margin.right * scale);
     int mTop = (int)(config.global.margin.top * scale);
     int mBottom = (int)(config.global.margin.bottom * scale);
-
     int x = 0, y = 0, w = 0, h = 0;
     std::string pos = config.global.position;
 
@@ -204,7 +196,6 @@ HWND Railing::CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config)
         x, y, w, h,
         nullptr, nullptr, hInstance, this
     );
-
     MARGINS margins = { -1 };
     DwmExtendFrameIntoClientArea(hwnd, &margins);
 
@@ -219,7 +210,6 @@ void Railing::RunMessageLoop()
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-
 }
 
 LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -239,7 +229,6 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         PAINTSTRUCT ps;
         BeginPaint(hwnd, &ps);
         if (self) {
-            // ONLY refresh if the shell hook triggered it
             if (self->needsWindowRefresh) {
                 self->GetTopLevelWindows(self->allWindows);
                 self->needsWindowRefresh = false;
@@ -275,27 +264,27 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
         return 0;
     case WM_MOUSEWHEEL:
-        if (self) {
-            POINT pt; GetCursorPos(&pt);
-            Module *m = self->renderer->GetModule("workspaces");
+        if (self && self->renderer) {
+            if (GetKeyState(VK_MENU) & 0x8000) {
 
-            if (m) {
-                short delta = GET_WHEEL_DELTA_WPARAM(wParam);
-                int current = self->workspaces.currentWorkspace;
-                int count = 5;
-
-                int next = current;
-                if (delta > 0) next--; else next++;
-
-                if (next < 0) next = count - 1;
-                if (next >= 0) next = 0;
-
-                if (next != current) {
-                    self->workspaces.SwitchWorkspace(next);
+                Module *m = self->renderer->GetModule("workspaces");
+                if (m) {
                     WorkspacesModule *ws = (WorkspacesModule *)m;
-                    ws->SetActiveIndex(next);
-                    self->GetTopLevelWindows(self->allWindows);
-                    InvalidateRect(hwnd, NULL, FALSE);
+
+                    short delta = GET_WHEEL_DELTA_WPARAM(wParam);
+                    int current = self->workspaces.currentWorkspace;
+                    int count = ws->count;
+                    int next = current;
+                    if (delta > 0) next--; else next++;
+                    if (next < 0) next = count - 1;
+                    if (next >= count) next = 0;
+
+                    if (next != current) {
+                        self->workspaces.SwitchWorkspace(next);
+                        ws->SetActiveIndex(next);
+                        self->GetTopLevelWindows(self->allWindows);
+                        InvalidateRect(hwnd, NULL, FALSE);
+                    }
                 }
             }
         }
@@ -559,7 +548,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
                     handled = true;
                 }
-                else if (type == "ping") {
+                else if (type == "ping" || type == "weather") {
                     std::string action = m->config.onClick;
                     if (!action.empty()) {
                         CommandExecutor::Execute(action, hwnd);
@@ -640,119 +629,99 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
         return 0;
     }
-    case WM_RBUTTONUP:
-    {
-        if (!self || !self->renderer) break;
+case WM_RBUTTONUP:
+{
+    if (!self || !self->renderer) break;
 
-        int mx = GET_X_LPARAM(lParam);
-        int my = GET_Y_LPARAM(lParam);
-        POINT pt = { mx, my };
-        POINT screenPt = pt;
-        ClientToScreen(hwnd, &screenPt);
+    float scale = GetDpiForWindow(hwnd) / 96.0f;
+    POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+    Module *hitModule = nullptr;
+    D2D1_RECT_F modRect = { 0 };
 
-        float dpi = (float)GetDpiForWindow(hwnd);
-        float scale = dpi / 96.0f;
-        Module *hitModule = nullptr;
-        D2D1_RECT_F modRect = { 0 };
+    for (auto const &[id, cfg] : self->renderer->theme.modules) {
+        D2D1_RECT_F f = self->renderer->GetModuleRect(id);
+        if (f.right == 0.0f) continue;
 
-        for (auto const &[id, cfg] : self->renderer->theme.modules) {
-            D2D1_RECT_F f = self->renderer->GetModuleRect(id);
-            if (f.right == 0.0f && f.bottom == 0.0f) continue;
-
-            RECT localR = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
-            if (PtInRect(&localR, pt)) {
-                hitModule = self->renderer->GetModule(id);
-                modRect = f;
-                break;
-            }
+        RECT localR = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
+        if (PtInRect(&localR, pt)) {
+            hitModule = self->renderer->GetModule(id);
+            modRect = f;
+            break;
         }
+    }
 
-        if (hitModule && hitModule->config.type == "dock") {
-            DockModule *dock = (DockModule *)hitModule;
+    if (!hitModule || hitModule->config.type != "dock") break;
+    DockModule *dock = (DockModule *)hitModule;
 
-            float localX = ((float)pt.x / scale) - modRect.left;
-            float modW = modRect.right - modRect.left;
-            Style s = dock->GetEffectiveStyle();
-            float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
-            float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+    int count = dock->GetCount();
+    if (count == 0) break;
 
-            size_t count = self->allWindows.size();
-            float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
-            float bgWidth = modW - s.margin.left - s.margin.right;
-            float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
+    Style containerStyle = dock->GetEffectiveStyle();
+    Style itemStyle = dock->config.itemStyle; // Use itemStyle for padding math
+    float itemBoxWidth = dock->config.dockIconSize + itemStyle.padding.left + itemStyle.padding.right;
+    float itemSpacing = itemStyle.margin.left + itemStyle.margin.right;
+    if (dock->config.dockSpacing > 0) itemSpacing = dock->config.dockSpacing;
+    float totalWidth = (count * itemBoxWidth) + ((count - 1) * itemSpacing);
+    float modW = modRect.right - modRect.left;
+    float startX = containerStyle.margin.left + ((modW - containerStyle.margin.left - containerStyle.margin.right - totalWidth) / 2.0f);
+    float mouseX = ((float)pt.x / scale) - modRect.left;
+    if (mouseX >= startX && mouseX <= (startX + totalWidth)) {
+        float relativeX = mouseX - startX;
+        float fullItemStride = itemBoxWidth + itemSpacing;
+        int idx = (int)(relativeX / fullItemStride);
 
-            if (localX >= startX && localX <= (startX + totalIconWidth)) {
-                float offset = localX - startX;
-                int index = (int)(offset / (iSize + iSpace));
-                float relativePos = fmod(offset, (iSize + iSpace));
+        if (idx >= 0 && idx < count) {
+            WindowInfo targetWin = dock->GetWindowInfoAtIndex(idx);
+            HMENU hMenu = CreatePopupMenu();
+            std::wstring title = targetWin.title.empty() ? L"Application" : targetWin.title;
+            if (title == L"Application" && !targetWin.exePath.empty()) {
+                size_t ls = targetWin.exePath.find_last_of(L"\\/");
+                if (ls != std::wstring::npos) title = targetWin.exePath.substr(ls + 1);
+            }
 
-                if (relativePos <= iSize && index >= 0 && index < count) {
-                    WindowInfo &targetWin = self->allWindows[index];
+            AppendMenuW(hMenu, MF_STRING | MF_DISABLED, 0, title.c_str());
+            AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+            AppendMenuW(hMenu, MF_STRING, 100, targetWin.hwnd ? L"Open New Window" : L"Launch");
 
-                    HMENU hMenu = CreatePopupMenu();
-                    std::wstring header = targetWin.title;
-                    if (header.empty()) {
-                        header = targetWin.exePath.substr(targetWin.exePath.find_last_of(L"\\/") + 1);
-                    }
-                    AppendMenuW(hMenu, MF_STRING | MF_DISABLED, 0, header.c_str());
-                    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+            bool isPinned = false;
+            for (auto &p : self->pinnedApps) {
+                if (!p.empty() && p == targetWin.exePath) isPinned = true;
+            }
+            AppendMenuW(hMenu, MF_STRING, 101, isPinned ? L"Unpin" : L"Pin");
 
-                    if (targetWin.hwnd == NULL) AppendMenuW(hMenu, MF_STRING, 100, L"Launch");
-                    else AppendMenuW(hMenu, MF_STRING, 100, L"Open New Window");
+            if (targetWin.hwnd) {
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                AppendMenuW(hMenu, MF_STRING, 102, L"Close");
+            }
+            POINT screenPt = pt; ClientToScreen(hwnd, &screenPt);
+            SetForegroundWindow(hwnd);
+            int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, screenPt.x, screenPt.y, 0, hwnd, NULL);
+            DestroyMenu(hMenu);
 
-                    if (targetWin.isPinned) AppendMenuW(hMenu, MF_STRING, 101, L"Unpin");
-                    else AppendMenuW(hMenu, MF_STRING, 101, L"Pin");
+            if (cmd == 100) { // Launch / Open
+                std::wstring path = targetWin.exePath;
+                if (path.empty() && targetWin.hwnd) path = Railing::GetWindowExePath(targetWin.hwnd);
+                if (!path.empty()) ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            }
+            else if (cmd == 101) { // Pin / Unpin
+                std::wstring path = targetWin.exePath;
+                if (path.empty() && targetWin.hwnd) path = Railing::GetWindowExePath(targetWin.hwnd);
 
-                    if (targetWin.hwnd != NULL) {
-                        AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
-                        AppendMenuW(hMenu, MF_STRING, 102, L"Close Window");
-                    }
+                auto it = std::find(self->pinnedApps.begin(), self->pinnedApps.end(), path);
+                if (it != self->pinnedApps.end()) self->pinnedApps.erase(it);
+                else self->pinnedApps.push_back(path);
 
-                    SetForegroundWindow(hwnd);
-                    int selection = TrackPopupMenu(hMenu, TPM_TOPALIGN | TPM_LEFTALIGN | TPM_RETURNCMD | TPM_NONOTIFY, screenPt.x, screenPt.y, 0, hwnd, NULL);
-                    DestroyMenu(hMenu);
-
-                    switch (selection) {
-                    case 100: // Open / Launch
-                    {
-                        std::wstring exePath = targetWin.exePath;
-                        if (exePath.empty() && targetWin.hwnd) exePath = Railing::GetWindowExePath(targetWin.hwnd);
-
-                        if (!exePath.empty()) {
-                            ShellExecuteW(NULL, L"open", exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                        }
-                        else {
-                            MessageBeep(MB_ICONWARNING);
-                        }
-                    }
-                    break;
-                    case 101: // Pin / Unpin
-                    {
-                        std::wstring path = targetWin.exePath;
-                        if (path.empty() && targetWin.hwnd) path = GetWindowExePath(targetWin.hwnd);
-
-                        auto it = std::find(self->pinnedApps.begin(), self->pinnedApps.end(), path);
-                        if (it != self->pinnedApps.end()) {
-                            self->pinnedApps.erase(it); // Remove
-                        }
-                        else {
-                            self->pinnedApps.push_back(path); // Add
-                        }
-
-                        self->SavePinnedApps();
-                        self->GetTopLevelWindows(self->allWindows);
-                        InvalidateRect(hwnd, NULL, FALSE);
-                    }
-                    break;
-                    case 102: // Close
-                        if (targetWin.hwnd) PostMessage(targetWin.hwnd, WM_CLOSE, 0, 0);
-                        break;
-                    }
-                }
+                self->SavePinnedApps();
+                self->GetTopLevelWindows(self->allWindows); // Refresh Data
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            else if (cmd == 102) { // Close
+                if (targetWin.hwnd) PostMessage(targetWin.hwnd, WM_CLOSE, 0, 0);
             }
         }
     }
-    return 0;
+}
+return 0;
 case WM_TIMER:
     if (wParam == 1 && self) self->UpdateSystemStats();
 
@@ -903,12 +872,34 @@ case WM_TIMER:
         return 0;
     default:
         if (uMsg == self->shellMsgId) {
-            if (wParam == 1) {
-                HWND hNew = (HWND)lParam;
-                if (self->IsAppWindow(hNew)) { // Only track actual apps
-                    self->workspaces.AddWindow(hNew);
+            int code = (int)wParam;
+            HWND targetHwnd = (HWND)lParam;
+            
+            switch (code) {
+            case HSHELL_WINDOWCREATED:
+                if (self->IsAppWindow(targetHwnd)) {
+                    self->workspaces.AddWindow(targetHwnd);
+                }
+                break;
+            case HSHELL_WINDOWDESTROYED: {
+                    self->workspaces.RemoveWindow(targetHwnd);
+                    Module *m = self->renderer->GetModule("dock");
+                    if (m) ((DockModule *)m)->ClearAttention(targetHwnd);
+                    break;
+                }
+            case HSHELL_FLASH:
+            case HSHELL_RUDEAPPACTIVATED: {
+                Module *m = self->renderer->GetModule("dock");
+                if (m) ((DockModule *)m)->SetAttention(targetHwnd, true);
+            }
+            break;
+            case HSHELL_REDRAW: {
+                    Module *m = self->renderer->GetModule("dock");
+                    if (m) ((DockModule *)m)->InvalidateIcon(targetHwnd);
+                    break;
                 }
             }
+
             self->needsWindowRefresh = true; // Flag for next paint
             InvalidateRect(hwnd, nullptr, FALSE);
         }
@@ -959,7 +950,7 @@ void Railing::DrawBar(HWND hwnd) {
     statsData.isMuted = cachedMute;
 
     renderer->UpdateStats(statsData);
-    renderer->Draw(allWindows, foreground);
+    renderer->Draw(allWindows, pinnedApps, foreground);
 }
 
 void Railing::GetTopLevelWindows(std::vector<WindowInfo> &outWindows)
@@ -1028,16 +1019,44 @@ bool Railing::IsMouseAtEdge()
 
 BOOL Railing::IsAppWindow(HWND hwnd)
 {
+    // 1. Basic Validity
+    if (!IsWindow(hwnd)) return FALSE;
     if (!IsWindowVisible(hwnd)) return FALSE;
-    LONG_PTR style = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-    if (style & WS_EX_TOOLWINDOW) return FALSE;
 
-    wchar_t className[256];
-    GetClassName(hwnd, className, 256);
+    // 2. Cloaked Check (Windows 8/10/11 DWM)
     int cloakedVal = 0;
     HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloakedVal, sizeof(cloakedVal));
     if (SUCCEEDED(hr) && cloakedVal != 0) return FALSE;
-    if (GetWindow(hwnd, GW_OWNER) != NULL && !(style & WS_EX_APPWINDOW)) return FALSE;
-    if (wcscmp(className, L"Progman") == 0 || wcscmp(className, L"Shell_TrayWnd") == 0) return FALSE;
+
+    // 3. Styles
+    LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+    LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+
+    // RULE A: If explicit AppWindow, always show it (even if owned).
+    if (exStyle & WS_EX_APPWINDOW) return TRUE;
+
+    // RULE B: If explicit ToolWindow, always hide it.
+    if (exStyle & WS_EX_TOOLWINDOW) return FALSE;
+
+    // RULE C: Ownership Check (The "Strict" Rule)
+    HWND owner = GetWindow(hwnd, GW_OWNER);
+    if (owner != NULL) {
+        return FALSE;
+    }
+
+    // RULE D: The "Physical" Check (Anti-Electron)
+    RECT rect;
+    GetWindowRect(hwnd, &rect);
+    if ((rect.right - rect.left) < 20 || (rect.bottom - rect.top) < 20) {
+        return FALSE;
+    }
+
+    if (hwnd == this->hwndBar) return FALSE;
+
+    char className[256];
+    GetClassNameA(hwnd, className, 256);
+    if (strcmp(className, "Progman") == 0) return FALSE; // Desktop
+    if (strcmp(className, "Shell_TrayWnd") == 0) return FALSE; // Native Taskbar
+
     return TRUE;
 }

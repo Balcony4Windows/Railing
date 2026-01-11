@@ -28,6 +28,7 @@ struct Padding {
 struct Style {
     D2D1_COLOR_F bg = D2D1::ColorF(0, 0, 0, 0); // Default Transparent
     D2D1_COLOR_F fg = D2D1::ColorF(1, 1, 1, 1); // Default White
+    D2D1_COLOR_F indicator = { 0, 0, 0, 0 };
     float radius = 0.0f;
     Padding padding;
     Padding margin;
