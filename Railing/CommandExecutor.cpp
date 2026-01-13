@@ -1,11 +1,7 @@
 #include "CommandExecutor.h"
 #include <shellapi.h>
-#include <vector>
 #include <sstream>
 #include <iomanip>
-#include <map>
-#include <powrprof.h> // For sleep/hibernate if needed
-#pragma comment(lib, "PowrProf.lib")
 
 void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {
     if (command.empty()) return;

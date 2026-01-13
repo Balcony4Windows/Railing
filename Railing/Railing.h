@@ -14,6 +14,7 @@
 #include "AppBarRegistration.h"
 #include <Psapi.h>
 #include "WorkspaceManager.h"
+#include "AudioCapture.h"
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)
@@ -48,6 +49,7 @@ public:
 	VolumeFlyout *flyout = nullptr;
 	TrayFlyout *trayFlyout;
 	WorkspaceManager workspaces;
+	AudioCapture visualizerBackend;
 
 	static std::string ToUtf8(const std::wstring &wstr) {
 		if (wstr.empty()) return std::string();
@@ -58,21 +60,24 @@ public:
 	}
 private:
 	HWND CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config);
-	void DrawBar(HWND hwnd); 
+	void DrawBar(HWND hwnd);
 
-	static inline std::wstring GetWindowExePath(HWND hwnd) {
+	static std::wstring GetWindowExePath(HWND hwnd) {
 		DWORD pid = 0;
 		GetWindowThreadProcessId(hwnd, &pid);
+		if (pid == 0) return L"";
+
 		HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
 		if (!hProcess) return L"";
 
 		wchar_t path[MAX_PATH];
-		if (GetModuleFileNameExW(hProcess, NULL, path, MAX_PATH) == 0) {
-			DWORD size = MAX_PATH;
-			QueryFullProcessImageNameW(hProcess, 0, path, &size);
+		if (GetModuleFileNameExW(hProcess, NULL, path, MAX_PATH)) {
+			CloseHandle(hProcess);
+			return path;
 		}
+
 		CloseHandle(hProcess);
-		return std::wstring(path);
+		return L"";
 	}
 
 	bool needsWindowRefresh = true;
@@ -98,7 +103,8 @@ private:
 		nlohmann::json j;
 		std::ifstream i(fullPathW);
 		if (i.is_open()) {
-			try { i >> j; } catch (...) {}
+			try { i >> j; }
+			catch (...) {}
 			i.close();
 		}
 

@@ -49,18 +49,23 @@ void Railing::CheckForConfigUpdate()
 bool Railing::Initialize(HINSTANCE hInstance)
 {
     SetThreadDescription(GetCurrentThread(), L"Railing_MainUI");
-    if (FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED))) return false;
+    if (FAILED(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED))) return false;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     instance = this;
-    hInst = hInstance;
-    stats.Initialize();
-    gpuStats.Initialize();
-
     cachedConfig = ThemeLoader::Load("config.json");
+
+    hInst = hInstance;
+    if (Module::HasType(cachedConfig, "gpu")) gpuStats.Initialize();
+    if (Module::HasType(cachedConfig, "visualizer")) visualizerBackend.Start();
+
     this->pinnedApps = cachedConfig.pinnedPaths;
     if (cachedConfig.global.blur) cachedConfig.global.radius = 1.0f; // This is fixed by Windows :(
     hwndBar = CreateBarWindow(hInstance, cachedConfig);
     if (!hwndBar) return false;
+    if (!renderer) {
+        renderer = new RailingRenderer(hwndBar, cachedConfig);
+        renderer->pWorkspaceManager = &workspaces;
+    }
     tooltips.Initialize(hwndBar);
     CheckForConfigUpdate(); // Initial load
     GetTopLevelWindows(allWindows);
@@ -121,12 +126,14 @@ bool Railing::Initialize(HINSTANCE hInstance)
     SetTimer(hwndBar, 1, 500, NULL);
     SetTimer(hwndBar, 2, 16, NULL); // Animation/autohide (60 fps)
 
-    flyout = new VolumeFlyout(hInstance,
-        renderer->GetFactory(),
-        renderer->GetWriteFactory(),
-        renderer->theme);
-    flyout->audio.EnsureInitialized(hwndBar);
-    trayFlyout = new TrayFlyout(hInstance, renderer->GetFactory(), renderer->GetWICFactory(), renderer->theme);
+    if (Module::HasType(cachedConfig, "audio")) {
+        flyout = new VolumeFlyout(hInstance,
+            renderer->GetFactory(),
+            renderer->GetWriteFactory(),
+            renderer->theme);
+        flyout->audio.EnsureInitialized(hwndBar);
+    }
+    if (Module::HasType(cachedConfig, "tray")) trayFlyout = new TrayFlyout(hInstance, renderer->GetFactory(), renderer->GetWICFactory(), renderer->theme);
 
 
     ShowWindow(hwndBar, SW_SHOW);
@@ -629,181 +636,200 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
         return 0;
     }
-case WM_RBUTTONUP:
-{
-    if (!self || !self->renderer) break;
+    case WM_RBUTTONUP:
+    {
+        if (!self || !self->renderer) break;
 
-    float scale = GetDpiForWindow(hwnd) / 96.0f;
-    POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-    Module *hitModule = nullptr;
-    D2D1_RECT_F modRect = { 0 };
+        float scale = GetDpiForWindow(hwnd) / 96.0f;
+        POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+        Module *hitModule = nullptr;
+        D2D1_RECT_F modRect = { 0 };
 
-    for (auto const &[id, cfg] : self->renderer->theme.modules) {
-        D2D1_RECT_F f = self->renderer->GetModuleRect(id);
-        if (f.right == 0.0f) continue;
+        for (auto const &[id, cfg] : self->renderer->theme.modules) {
+            D2D1_RECT_F f = self->renderer->GetModuleRect(id);
+            if (f.right == 0.0f) continue;
 
-        RECT localR = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
-        if (PtInRect(&localR, pt)) {
-            hitModule = self->renderer->GetModule(id);
-            modRect = f;
-            break;
+            RECT localR = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
+            if (PtInRect(&localR, pt)) {
+                hitModule = self->renderer->GetModule(id);
+                modRect = f;
+                break;
+            }
         }
-    }
 
-    if (!hitModule || hitModule->config.type != "dock") break;
-    DockModule *dock = (DockModule *)hitModule;
+        if (!hitModule || hitModule->config.type != "dock") break;
+        DockModule *dock = (DockModule *)hitModule;
 
-    int count = dock->GetCount();
-    if (count == 0) break;
+        int count = dock->GetCount();
+        if (count == 0) break;
 
-    Style containerStyle = dock->GetEffectiveStyle();
-    Style itemStyle = dock->config.itemStyle; // Use itemStyle for padding math
-    float itemBoxWidth = dock->config.dockIconSize + itemStyle.padding.left + itemStyle.padding.right;
-    float itemSpacing = itemStyle.margin.left + itemStyle.margin.right;
-    if (dock->config.dockSpacing > 0) itemSpacing = dock->config.dockSpacing;
-    float totalWidth = (count * itemBoxWidth) + ((count - 1) * itemSpacing);
-    float modW = modRect.right - modRect.left;
-    float startX = containerStyle.margin.left + ((modW - containerStyle.margin.left - containerStyle.margin.right - totalWidth) / 2.0f);
-    float mouseX = ((float)pt.x / scale) - modRect.left;
-    if (mouseX >= startX && mouseX <= (startX + totalWidth)) {
-        float relativeX = mouseX - startX;
-        float fullItemStride = itemBoxWidth + itemSpacing;
-        int idx = (int)(relativeX / fullItemStride);
+        Style containerStyle = dock->GetEffectiveStyle();
+        Style itemStyle = dock->config.itemStyle; // Use itemStyle for padding math
+        float itemBoxWidth = dock->config.dockIconSize + itemStyle.padding.left + itemStyle.padding.right;
+        float itemSpacing = itemStyle.margin.left + itemStyle.margin.right;
+        if (dock->config.dockSpacing > 0) itemSpacing = dock->config.dockSpacing;
+        float totalWidth = (count * itemBoxWidth) + ((count - 1) * itemSpacing);
+        float modW = modRect.right - modRect.left;
+        float startX = containerStyle.margin.left + ((modW - containerStyle.margin.left - containerStyle.margin.right - totalWidth) / 2.0f);
+        float mouseX = ((float)pt.x / scale) - modRect.left;
+        if (mouseX >= startX && mouseX <= (startX + totalWidth)) {
+            float relativeX = mouseX - startX;
+            float fullItemStride = itemBoxWidth + itemSpacing;
+            int idx = (int)(relativeX / fullItemStride);
 
-        if (idx >= 0 && idx < count) {
-            WindowInfo targetWin = dock->GetWindowInfoAtIndex(idx);
-            HMENU hMenu = CreatePopupMenu();
-            std::wstring title = targetWin.title.empty() ? L"Application" : targetWin.title;
-            if (title == L"Application" && !targetWin.exePath.empty()) {
-                size_t ls = targetWin.exePath.find_last_of(L"\\/");
-                if (ls != std::wstring::npos) title = targetWin.exePath.substr(ls + 1);
-            }
+            if (idx >= 0 && idx < count) {
+                WindowInfo targetWin = dock->GetWindowInfoAtIndex(idx);
+                HMENU hMenu = CreatePopupMenu();
+                std::wstring title = targetWin.title.empty() ? L"Application" : targetWin.title;
+                if (title == L"Application" && !targetWin.exePath.empty()) {
+                    size_t ls = targetWin.exePath.find_last_of(L"\\/");
+                    if (ls != std::wstring::npos) title = targetWin.exePath.substr(ls + 1);
+                }
 
-            AppendMenuW(hMenu, MF_STRING | MF_DISABLED, 0, title.c_str());
-            AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
-            AppendMenuW(hMenu, MF_STRING, 100, targetWin.hwnd ? L"Open New Window" : L"Launch");
-
-            bool isPinned = false;
-            for (auto &p : self->pinnedApps) {
-                if (!p.empty() && p == targetWin.exePath) isPinned = true;
-            }
-            AppendMenuW(hMenu, MF_STRING, 101, isPinned ? L"Unpin" : L"Pin");
-
-            if (targetWin.hwnd) {
+                AppendMenuW(hMenu, MF_STRING | MF_DISABLED, 0, title.c_str());
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
-                AppendMenuW(hMenu, MF_STRING, 102, L"Close");
+                AppendMenuW(hMenu, MF_STRING, 100, targetWin.hwnd ? L"Open New Window" : L"Launch");
+
+                bool isPinned = false;
+                for (auto &p : self->pinnedApps) {
+                    if (!p.empty() && p == targetWin.exePath) isPinned = true;
+                }
+                AppendMenuW(hMenu, MF_STRING, 101, isPinned ? L"Unpin" : L"Pin");
+
+                if (targetWin.hwnd) {
+                    AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
+                    AppendMenuW(hMenu, MF_STRING, 102, L"Close");
+                }
+                POINT screenPt = pt; ClientToScreen(hwnd, &screenPt);
+                SetForegroundWindow(hwnd);
+                int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, screenPt.x, screenPt.y, 0, hwnd, NULL);
+                DestroyMenu(hMenu);
+
+                if (cmd == 100) { // Launch / Open
+                    std::wstring path = targetWin.exePath;
+                    if (path.empty() && targetWin.hwnd) path = GetWindowExePath(targetWin.hwnd);
+                    if (!path.empty()) ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                }
+                else if (cmd == 101) { // Pin / Unpin
+                    std::wstring path = targetWin.exePath;
+                    if (path.empty() && targetWin.hwnd) path = GetWindowExePath(targetWin.hwnd);
+
+                    auto it = std::find(self->pinnedApps.begin(), self->pinnedApps.end(), path);
+                    if (it != self->pinnedApps.end()) self->pinnedApps.erase(it);
+                    else self->pinnedApps.push_back(path);
+
+                    self->SavePinnedApps();
+                    self->GetTopLevelWindows(self->allWindows); // Refresh Data
+                    InvalidateRect(hwnd, NULL, FALSE);
+                }
+                else if (cmd == 102) { // Close
+                    if (targetWin.hwnd) PostMessage(targetWin.hwnd, WM_CLOSE, 0, 0);
+                }
             }
-            POINT screenPt = pt; ClientToScreen(hwnd, &screenPt);
-            SetForegroundWindow(hwnd);
-            int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, screenPt.x, screenPt.y, 0, hwnd, NULL);
-            DestroyMenu(hMenu);
-
-            if (cmd == 100) { // Launch / Open
-                std::wstring path = targetWin.exePath;
-                if (path.empty() && targetWin.hwnd) path = Railing::GetWindowExePath(targetWin.hwnd);
-                if (!path.empty()) ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
-            }
-            else if (cmd == 101) { // Pin / Unpin
-                std::wstring path = targetWin.exePath;
-                if (path.empty() && targetWin.hwnd) path = Railing::GetWindowExePath(targetWin.hwnd);
-
-                auto it = std::find(self->pinnedApps.begin(), self->pinnedApps.end(), path);
-                if (it != self->pinnedApps.end()) self->pinnedApps.erase(it);
-                else self->pinnedApps.push_back(path);
-
-                self->SavePinnedApps();
-                self->GetTopLevelWindows(self->allWindows); // Refresh Data
-                InvalidateRect(hwnd, NULL, FALSE);
-            }
-            else if (cmd == 102) { // Close
-                if (targetWin.hwnd) PostMessage(targetWin.hwnd, WM_CLOSE, 0, 0);
-            }
-        }
-    }
-}
-return 0;
-case WM_TIMER:
-    if (wParam == 1 && self) self->UpdateSystemStats();
-
-    if (wParam == 2 && self && self->cachedConfig.global.autoHide) {
-        POINT pt; GetCursorPos(&pt);
-        RECT barRect; GetWindowRect(hwnd, &barRect);
-
-        std::string pos = self->cachedConfig.global.position;
-        int screenW = GetSystemMetrics(SM_CXSCREEN);
-        int screenH = GetSystemMetrics(SM_CYSCREEN);
-
-        if (pos == "top")    barRect.top = 0;
-        if (pos == "bottom") barRect.bottom = screenH;
-        if (pos == "left")   barRect.left = 0;
-        if (pos == "right")  barRect.right = screenW;
-
-        bool mouseOver = PtInRect(&barRect, pt);
-        bool flyoutOpen = (self->flyout && self->flyout->IsVisible()) ||
-            (self->trayFlyout && self->trayFlyout->IsVisible());
-
-        bool shouldShow = false;
-
-        if (flyoutOpen || mouseOver || self->IsMouseAtEdge()) {
-            shouldShow = true;
-            self->lastInteractionTime = GetTickCount64();
-        }
-        else {
-            ULONGLONG diff = GetTickCount64() - self->lastInteractionTime;
-            if (diff < self->cachedConfig.global.autoHideDelay) shouldShow = true;
-        }
-
-        float oldProgress = self->showProgress; // Capture state before update
-        float speed = 0.15f;
-        if (shouldShow) {
-            self->showProgress += speed;
-            if (self->showProgress > 1.0f) self->showProgress = 1.0f;
-        }
-        else {
-            self->showProgress -= speed;
-            if (self->showProgress < 0.0f) self->showProgress = 0.0f;
-        }
-
-        bool progressChanged = (self->showProgress != oldProgress);
-        bool stateChanged = (shouldShow != !self->isHidden);
-
-        if (progressChanged || stateChanged) {
-
-            self->isHidden = !shouldShow;
-
-            float dpi = (float)GetDpiForWindow(hwnd);
-            float scale = dpi / 96.0f;
-            int h = (int)(self->cachedConfig.global.height * scale); // Height
-
-            int mTop = (int)(self->cachedConfig.global.margin.top * scale);
-            int mBottom = (int)(self->cachedConfig.global.margin.bottom * scale);
-            int mLeft = (int)(self->cachedConfig.global.margin.left * scale);
-            int mRight = (int)(self->cachedConfig.global.margin.right * scale);
-            int x = 0, y = 0, w = 0;
-
-            if (pos == "bottom") {
-                int shownY = screenH - mBottom - h;
-                int hiddenY = screenH;
-
-                y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
-
-                x = mLeft;
-                w = screenW - mLeft - mRight;
-            }
-            else if (pos == "top") {
-                int shownY = mTop;
-                int hiddenY = -h;
-
-                y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
-
-                x = mLeft;
-                w = screenW - mLeft - mRight;
-            }
-            // TODO: Add Left/Right logic here
-            SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
         }
     }
     return 0;
+    case WM_TIMER:
+        if (wParam == 1 && self) self->UpdateSystemStats();
+
+        if (wParam == 2 && self) {
+            bool needsFastRepaint = false;
+            if (self->renderer) {
+                auto UpdateVisualizers = [&](const std::vector<Module *> &list) {
+                    for (Module *m : list) {
+                        if (m->config.type == "visualizer") {
+                            m->Update();
+                            needsFastRepaint = true;
+                        }
+                    }
+                    };
+
+                UpdateVisualizers(self->renderer->leftModules);
+                UpdateVisualizers(self->renderer->centerModules);
+                UpdateVisualizers(self->renderer->rightModules);
+            }
+
+            if (needsFastRepaint) InvalidateRect(hwnd, NULL, FALSE);
+            if (self->cachedConfig.global.autoHide) {
+                POINT pt; GetCursorPos(&pt);
+                RECT barRect; GetWindowRect(hwnd, &barRect);
+
+                std::string pos = self->cachedConfig.global.position;
+                int screenW = GetSystemMetrics(SM_CXSCREEN);
+                int screenH = GetSystemMetrics(SM_CYSCREEN);
+
+                if (pos == "top")    barRect.top = 0;
+                if (pos == "bottom") barRect.bottom = screenH;
+                if (pos == "left")   barRect.left = 0;
+                if (pos == "right")  barRect.right = screenW;
+
+                bool mouseOver = PtInRect(&barRect, pt);
+                bool flyoutOpen = (self->flyout && self->flyout->IsVisible()) ||
+                    (self->trayFlyout && self->trayFlyout->IsVisible());
+
+                bool shouldShow = false;
+
+                if (flyoutOpen || mouseOver || self->IsMouseAtEdge()) {
+                    shouldShow = true;
+                    self->lastInteractionTime = GetTickCount64();
+                }
+                else {
+                    ULONGLONG diff = GetTickCount64() - self->lastInteractionTime;
+                    if (diff < self->cachedConfig.global.autoHideDelay) shouldShow = true;
+                }
+
+                float oldProgress = self->showProgress; // Capture state before update
+                float speed = 0.15f;
+                if (shouldShow) {
+                    self->showProgress += speed;
+                    if (self->showProgress > 1.0f) self->showProgress = 1.0f;
+                }
+                else {
+                    self->showProgress -= speed;
+                    if (self->showProgress < 0.0f) self->showProgress = 0.0f;
+                }
+
+                bool progressChanged = (self->showProgress != oldProgress);
+                bool stateChanged = (shouldShow != !self->isHidden);
+
+                if (progressChanged || stateChanged) {
+
+                    self->isHidden = !shouldShow;
+
+                    float dpi = (float)GetDpiForWindow(hwnd);
+                    float scale = dpi / 96.0f;
+                    int h = (int)(self->cachedConfig.global.height * scale); // Height
+
+                    int mTop = (int)(self->cachedConfig.global.margin.top * scale);
+                    int mBottom = (int)(self->cachedConfig.global.margin.bottom * scale);
+                    int mLeft = (int)(self->cachedConfig.global.margin.left * scale);
+                    int mRight = (int)(self->cachedConfig.global.margin.right * scale);
+                    int x = 0, y = 0, w = 0;
+
+                    if (pos == "bottom") {
+                        int shownY = screenH - mBottom - h;
+                        int hiddenY = screenH;
+
+                        y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
+
+                        x = mLeft;
+                        w = screenW - mLeft - mRight;
+                    }
+                    else if (pos == "top") {
+                        int shownY = mTop;
+                        int hiddenY = -h;
+
+                        y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
+
+                        x = mLeft;
+                        w = screenW - mLeft - mRight;
+                    }
+                    // TODO: Add Left/Right logic here
+                    SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+                }
+            }
+        }
+        return 0;
     case WM_SIZE:
         if (self && self->renderer) {
             self->renderer->Resize();
@@ -874,7 +900,7 @@ case WM_TIMER:
         if (uMsg == self->shellMsgId) {
             int code = (int)wParam;
             HWND targetHwnd = (HWND)lParam;
-            
+
             switch (code) {
             case HSHELL_WINDOWCREATED:
                 if (self->IsAppWindow(targetHwnd)) {
@@ -882,22 +908,22 @@ case WM_TIMER:
                 }
                 break;
             case HSHELL_WINDOWDESTROYED: {
-                    self->workspaces.RemoveWindow(targetHwnd);
-                    Module *m = self->renderer->GetModule("dock");
-                    if (m) ((DockModule *)m)->ClearAttention(targetHwnd);
-                    break;
-                }
+                self->workspaces.RemoveWindow(targetHwnd);
+                Module *m = self->renderer->GetModule("dock");
+                if (m) ((DockModule *)m)->ClearAttention(targetHwnd);
+                break;
+            }
             case HSHELL_FLASH:
             case HSHELL_RUDEAPPACTIVATED: {
                 Module *m = self->renderer->GetModule("dock");
                 if (m) ((DockModule *)m)->SetAttention(targetHwnd, true);
             }
-            break;
+                                        break;
             case HSHELL_REDRAW: {
-                    Module *m = self->renderer->GetModule("dock");
-                    if (m) ((DockModule *)m)->InvalidateIcon(targetHwnd);
-                    break;
-                }
+                Module *m = self->renderer->GetModule("dock");
+                if (m) ((DockModule *)m)->InvalidateIcon(targetHwnd);
+                break;
+            }
             }
 
             self->needsWindowRefresh = true; // Flag for next paint

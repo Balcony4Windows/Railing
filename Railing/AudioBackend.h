@@ -14,6 +14,15 @@
 
 #define WM_RAILING_AUDIO_UPDATE (WM_USER + 20)
 
+inline void LogAudio(const char *fmt, ...) {
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    OutputDebugStringA(buf);
+}
+
 class CAudioEndpointVolumeCallback : public IAudioEndpointVolumeCallback
 {
     LONG _cRef;
@@ -83,54 +92,80 @@ public:
     HWND hwndMain = nullptr;
 
     AudioBackend() {
-        // REMOVED CoInitialize. We assume the main thread (Railing.cpp) did this.
-        CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL,
-            __uuidof(IMMDeviceEnumerator), (void **)&pEnumerator);
-
-        UpdateEndpoint();
+       // Constructor does minimal work now. 
+       // Real work happens in EnsureInitialized to capture HWND.
     }
 
     ~AudioBackend() {
         Cleanup();
     }
 
-    void EnsureInitialized(HWND hwnd) { // Change HWND &hwnd to just HWND hwnd
+    void EnsureInitialized(HWND hwnd) {
         hwndMain = hwnd;
+        LogAudio("AudioBackend: EnsureInitialized called for HWND %p\n", hwnd);
 
-        if (pVolume && !pCallback) {
-            pCallback = new CAudioEndpointVolumeCallback(hwndMain);
-            pVolume->RegisterControlChangeNotify(pCallback);
-        }
+        // 1. Try Initialize Enumerator
         if (!pEnumerator) {
-            CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-            HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL,
-                __uuidof(IMMDeviceEnumerator), (void **)&pEnumerator);
-            if (SUCCEEDED(hr)) UpdateEndpoint();
+            HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void **)&pEnumerator);
+            if (FAILED(hr)) {
+                LogAudio("AudioBackend: CoCreateInstance Failed! HR=0x%X. Trying CoInit...\n", hr);
+                // Try fixing COM
+                CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+                hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void **)&pEnumerator);
+            }
+
+            if (SUCCEEDED(hr)) LogAudio("AudioBackend: Enumerator Created.\n");
+            else LogAudio("AudioBackend: CRITICAL FAILURE. Could not create Enumerator. HR=0x%X\n", hr);
         }
-        if (pVolume && hwndMain) {
-            float vol = 0.0f;
-            BOOL mute = FALSE;
-            pVolume->GetMasterVolumeLevelScalar(&vol);
-            pVolume->GetMute(&mute);
-            PostMessage(hwndMain, WM_RAILING_AUDIO_UPDATE, (WPARAM)(vol * 100), (LPARAM)mute);
+
+        // 2. Try Update Endpoint
+        if (pEnumerator) {
+            UpdateEndpoint();
         }
     }
 
     void UpdateEndpoint() {
-        if (!pEnumerator) return; // If this is null, CoCreateInstance failed.
+        LogAudio("AudioBackend: Updating Endpoint...\n");
+        if (!pEnumerator) return;
 
-        if (pDevice) { pDevice->Release(); pDevice = nullptr; }
+        // Cleanup
+        if (pCallback && pVolume) {
+            pVolume->UnregisterControlChangeNotify(pCallback);
+            pCallback->Release();
+            pCallback = nullptr;
+        }
         if (pVolume) { pVolume->Release(); pVolume = nullptr; }
+        if (pDevice) { pDevice->Release(); pDevice = nullptr; }
 
-        // eMultimedia is better for general volume control than eConsole
-        pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice);
+        // Get Device
+        HRESULT hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice);
+        if (FAILED(hr)) {
+            LogAudio("AudioBackend: GetDefaultAudioEndpoint Failed (No Speaker?). HR=0x%X\n", hr);
+            return;
+        }
 
-        if (pDevice) {
-            pDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL, (void **)&pVolume);
-            if (pVolume && hwndMain) {
-                pCallback = new CAudioEndpointVolumeCallback(hwndMain);
-				pVolume->RegisterControlChangeNotify(pCallback);
-            }
+        // Activate Volume
+        hr = pDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL, (void **)&pVolume);
+        if (FAILED(hr)) {
+            LogAudio("AudioBackend: Device Activate Failed! HR=0x%X. (Likely Threading Issue)\n", hr);
+            return;
+        }
+
+        LogAudio("AudioBackend: Volume Interface Acquired!\n");
+
+        if (pVolume && hwndMain) {
+            pCallback = new CAudioEndpointVolumeCallback(hwndMain);
+            hr = pVolume->RegisterControlChangeNotify(pCallback);
+            if (FAILED(hr)) LogAudio("AudioBackend: Register Callback Failed. HR=0x%X\n", hr);
+            else LogAudio("AudioBackend: Callback Registered.\n");
+
+            // Force initial update
+            float vol = 0.0f;
+            BOOL mute = FALSE;
+            pVolume->GetMasterVolumeLevelScalar(&vol);
+            pVolume->GetMute(&mute);
+            LogAudio("AudioBackend: Sending Initial State -> Vol: %.2f, Mute: %d\n", vol, mute);
+            PostMessage(hwndMain, WM_RAILING_AUDIO_UPDATE, (WPARAM)(vol * 100), (LPARAM)mute);
         }
     }
 
@@ -170,7 +205,6 @@ public:
         if (pVolume) { pVolume->Release(); pVolume = nullptr; }
         if (pDevice) { pDevice->Release(); pDevice = nullptr; }
 		if (pEnumerator) { pEnumerator->Release(); pEnumerator = nullptr; }
-        CoUninitialize();
     }
 
     std::wstring GetCurrentDeviceName() {

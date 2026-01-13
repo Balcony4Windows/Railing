@@ -64,6 +64,14 @@ struct Threshold {
     int val;
     Style style;
 };
+// Used in VisualizerModule:
+struct VisualizerSettings {
+    int numBars = 32; // Number of bars to display
+    float sensitivity = 4.0f; // Multiplier (Gain)
+    float decay = 0.05f; // Fall speed (Gravity)
+    int offset = 2; // Bins to skip (Low frequency rumble)
+    float spacing = 2.0f; // Space between bars
+};
 
 // This struct is a "Superset" that can hold data for ANY module type.
 struct ModuleConfig {
@@ -76,6 +84,7 @@ struct ModuleConfig {
     int interval = 0;
 
     Style baseStyle;
+    VisualizerSettings viz;
 
     std::string latitude; /* For weather */
     std::string longitude;

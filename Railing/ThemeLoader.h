@@ -111,6 +111,14 @@ public:
 			if (val.contains("states")) {
 				for (auto &[stateName, stateStyle] : val["states"].items()) mod.states[stateName] = ParseStyle(stateStyle);
 			}
+			if (val.contains("visualizer")) {
+					auto &v = j["visualizer"];
+					if (v.contains("bars")) mod.viz.numBars = v["bars"].get<int>();
+					if (v.contains("sensitivity")) mod.viz.sensitivity = v["sensitivity"].get<float>();
+					if (v.contains("decay")) mod.viz.decay = v["decay"].get<float>();
+					if (v.contains("offset")) mod.viz.offset = v["offset"].get<int>();
+					if (v.contains("spacing")) mod.viz.spacing = v["spacing"].get<float>();
+			}
 
 			config.modules[key] = mod;
 		}

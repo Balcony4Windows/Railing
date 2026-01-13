@@ -1,61 +1,55 @@
 #include "SystemStats.h"
 #include <iostream>
 
-SystemStats::SystemStats() {
-    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+inline ULONGLONG FT2ULL(const FILETIME &ft)
+{
+	return ((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
 }
 
-SystemStats::~SystemStats() {
-    if (cpuQuery) PdhCloseQuery(cpuQuery);
+SystemStats::SystemStats() : prevSysIdle(NULL), prevSysKernel(NULL), prevSysUser(NULL), memInfo(NULL)
+{
+	memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+	GetSystemTimes(&prevSysIdle, &prevSysKernel, &prevSysUser);
 }
 
-void SystemStats::Initialize() {
-    // 1. Initialize CPU Query
-    // We query "\Processor(_Total)\% Processor Time"
-    if (PdhOpenQuery(NULL, NULL, &cpuQuery) == ERROR_SUCCESS) {
-        // Add the counter. Note: This path is locale-dependent on older Windows,
-        // but PdhAddEnglishCounter works on Vista+ for locale independence.
-        PdhAddEnglishCounter(cpuQuery, L"\\Processor(_Total)\\% Processor Time", NULL, &cpuTotal);
+SystemStats::~SystemStats() {}
 
-        // Prime the counter (first read is always 0 or invalid)
-        PdhCollectQueryData(cpuQuery);
-    }
+int SystemStats::GetCpuUsage()
+{
+	FILETIME sysIdle, sysKernel, sysUser;
+
+	if (!GetSystemTimes(&sysIdle, &sysKernel, &sysUser)) return 0;
+
+	ULONGLONG idle = FT2ULL(sysIdle) - FT2ULL(prevSysIdle);
+	ULONGLONG kernel = FT2ULL(sysKernel) - FT2ULL(prevSysKernel);
+	ULONGLONG user = FT2ULL(sysUser) - FT2ULL(prevSysUser);
+
+	prevSysIdle = sysIdle;
+	prevSysKernel = sysKernel;
+	prevSysUser = sysUser;
+
+	ULONGLONG total = kernel + user;
+	ULONGLONG used = total - idle;
+	if (total == 0) return 0;
+
+	return (int)((used * 100) / total); // percent
 }
 
-int SystemStats::GetCpuUsage() {
-    if (!cpuQuery) return 0;
-
-    // Collect new data point
-    PDH_STATUS status = PdhCollectQueryData(cpuQuery);
-    if (status != ERROR_SUCCESS) return 0;
-
-    // Format the value
-    PDH_FMT_COUNTERVALUE counterVal;
-    status = PdhGetFormattedCounterValue(cpuTotal, PDH_FMT_DOUBLE, NULL, &counterVal);
-
-    if (status == ERROR_SUCCESS) {
-        return (int)counterVal.doubleValue;
-    }
-    return 0;
+int SystemStats::GetRamUsage()
+{
+	return ((GlobalMemoryStatusEx(&memInfo)) ? (int)memInfo.dwMemoryLoad : 0);
 }
 
-int SystemStats::GetRamUsage() {
-    if (GlobalMemoryStatusEx(&memInfo)) {
-        return (int)memInfo.dwMemoryLoad; // 0 to 100
-    }
-    return 0;
-}
+std::wstring SystemStats::GetRamText()
+{
+	if (GlobalMemoryStatusEx(&memInfo)) {
+		double totalGB = memInfo.ullTotalPhys / (1024.0 * 1024.0 * 1024.0);
+		double freeGB = memInfo.ullAvailPhys / (1024.0 * 1024.0 * 1024.0);
+		double usedGB = totalGB - freeGB;
 
-std::wstring SystemStats::GetRamText() {
-    if (GlobalMemoryStatusEx(&memInfo)) {
-        // Calculate Used RAM in GB
-        double totalGB = memInfo.ullTotalPhys / (1024.0 * 1024.0 * 1024.0);
-        double freeGB = memInfo.ullAvailPhys / (1024.0 * 1024.0 * 1024.0);
-        double usedGB = totalGB - freeGB;
-
-        wchar_t buf[64];
-        swprintf_s(buf, L"%.1f GB", usedGB);
-        return std::wstring(buf);
-    }
-    return L"-- GB";
+		wchar_t buf[64];
+		swprintf_s(buf, L"%.1f GB", usedGB);
+		return std::wstring(buf);
+	}
+	return L"-- GB";
 }

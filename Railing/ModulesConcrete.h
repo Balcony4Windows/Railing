@@ -13,5 +13,6 @@
 #include "IconModule.h"
 #include "PingModule.h"
 #include "RamModule.h"
+#include "VisualizerModule.h"
 #include "WorkspacesModule.h"
 #include "WeatherModule.h"

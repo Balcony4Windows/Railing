@@ -114,6 +114,15 @@
     <ClInclude Include="WorkspaceManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SimpleFFT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AudioCapture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VisualizerModule.h">
+      <Filter>Header Files\ModuleTypes</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Railing.cpp">

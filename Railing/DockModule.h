@@ -107,7 +107,7 @@ class DockModule : public Module {
 
     void UpdateStableList(RenderContext &ctx) {
         if (!ctx.windows || !ctx.pinnedApps) return;
-        if (++updateThrottle < 10) return;
+        if (++updateThrottle < 4) return;
         updateThrottle = 0;
 
         std::map<HWND, const WindowInfo *> currentMap;

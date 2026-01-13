@@ -24,6 +24,7 @@ public:
 		else if (cfg.type == "weather") { return new WeatherModule(cfg); }
 		else if (cfg.type == "app_icon") return new AppIconModule(cfg);
 		else if (cfg.type == "dock") return new DockModule(cfg);
+		else if (cfg.type == "visualizer") return new VisualizerModule(cfg, &Railing::instance->visualizerBackend);
 
 		else if (cfg.type == "group") {
 			GroupModule *group = new GroupModule(cfg);

@@ -27,6 +27,14 @@ public:
 		return cachedLayout;
 	}
 
+	static bool HasType(ThemeConfig cfg, std::string type)
+	{
+		for (const auto &[id, moduleConfig] : cfg.modules) {
+			if (moduleConfig.type == type) return true;
+		}
+		return false;
+	}
+
 	/// <summary>
 	/// Update Logic (Run ever frame, e.g. check CPU usage)
 	/// </summary>

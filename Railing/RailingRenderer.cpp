@@ -199,7 +199,7 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     ctx.workspaces = pWorkspaceManager;
     ctx.wicFactory = pWICFactory;
     ctx.windows = &windows;
-    ctx.pinnedApps = (std::vector<std::wstring> *) &pinnedApps;
+    ctx.pinnedApps = (std::vector<std::wstring> *) & pinnedApps;
     ctx.foregroundWindow = activeWindow;
     ctx.textFormat = pTextFormat;
     ctx.boldTextFormat = pTextFormatBold;

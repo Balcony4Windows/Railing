@@ -158,6 +158,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="AppBarRegistration.h" />
     <ClInclude Include="AppIconModule.h" />
     <ClInclude Include="AudioBackend.h" />
+    <ClInclude Include="AudioCapture.h" />
     <ClInclude Include="ClockModule.h" />
     <ClInclude Include="CommandExecutor.h" />
     <ClInclude Include="CpuModule.h" />
@@ -176,11 +177,13 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="RamModule.h" />
     <ClInclude Include="RenderContext.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="SimpleFFT.h" />
     <ClInclude Include="SystemStats.h" />
     <ClInclude Include="ThemeTypes.h" />
     <ClInclude Include="TooltipHandler.h" />
     <ClInclude Include="TrayFlyout.h" />
     <ClInclude Include="Types.h" />
+    <ClInclude Include="VisualizerModule.h" />
     <ClInclude Include="VolumeFlyout.h" />
     <ClInclude Include="WeatherModule.h" />
     <ClInclude Include="WindowManager.h" />

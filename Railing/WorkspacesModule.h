@@ -1,62 +1,122 @@
 #pragma once
 #include "Module.h"
+#include <string>
+#include <algorithm>
 
 class WorkspacesModule : public Module
 {
 public:
-	float itemWidth = 20.0f;
-	float itemPadding = 0.0f;
-	int activeIndex = 0;
-	int hoveredIndex = -1;
-	int count = 5; // default
+    // --- COMPATIBILITY VARIABLES (Required by Railing.cpp) ---
+    float itemWidth = 20.0f;
+    float itemPadding = 0.0f;
+    // ---------------------------------------------------------
 
-	WorkspacesModule(const ModuleConfig &cfg) : Module(cfg) {}
-	float GetContentWidth(RenderContext &ctx) override
-	{
-		itemPadding = config.baseStyle.padding.left + config.baseStyle.padding.right;
-		if (itemPadding == 0.0f) itemPadding = 8.0f;
-		return (itemPadding + itemWidth) * count;
-	}
+    int activeIndex = 0;
+    int hoveredIndex = -1;
+    int count = 5;
 
-	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
-	{
-		float cursor = (ctx.isVertical) ? y : x;
-		for (int i = 0; i < count; i++) {
-			Style s = config.itemStyle;
-			if (i == activeIndex && config.states.count("active")) {
-				const Style &activeS = config.states.at("active");
-				// Manual Merge Logic
-				if (activeS.has_bg) s.bg = activeS.bg;
-				if (activeS.has_fg) s.fg = activeS.fg;
-				if (activeS.has_radius) s.radius = activeS.radius;
-				if (activeS.has_font_weight) s.font_weight = activeS.font_weight;
-			}
-			if (i == hoveredIndex && config.states.count("hover")) {
-				const Style &hoverS = config.states.at("hover");
-				if (hoverS.has_bg) s.bg = hoverS.bg;
-				if (hoverS.has_fg) s.fg = hoverS.fg;
-				if (hoverS.has_radius) s.radius = hoverS.radius;
-			}
-			D2D1_RECT_F itemRect;
-			if (!ctx.isVertical) itemRect = D2D1::RectF(cursor, y, cursor + itemWidth + itemPadding, y + h);
-			else itemRect = D2D1::RectF(x, cursor, x + w, cursor + itemWidth + itemPadding);
+    WorkspacesModule(const ModuleConfig &cfg) : Module(cfg) {}
 
-			if (i == activeIndex || i == hoveredIndex || s.has_bg) {
-				D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(itemRect, s.radius, s.radius);
-				ctx.bgBrush->SetColor(s.bg);
-				ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
-			}
+    float GetContentWidth(RenderContext &ctx) override
+    {
+        // 1. Calculate precise width for rendering
+        float totalWidth = 0.0f;
+        for (int i = 0; i < count; i++) {
+            Style s = ResolveStyle(i);
+            // Width = MarginL + PadL + Content + PadR + MarginR
+            // We use a fixed content width of 20.0f for the number
+            float width = s.margin.left + s.padding.left + 20.0f + s.padding.right + s.margin.right;
+            totalWidth += width;
+        }
 
-			// Text
-			wchar_t buf[4];
-			swprintf_s(buf, L"%d", i + 1);
-			ctx.textBrush->SetColor(s.fg);
-			IDWriteTextFormat *fmt = (s.font_weight == "bold") ? ctx.boldTextFormat : ctx.textFormat;
-			ctx.rt->DrawTextW(buf, (UINT32)wcslen(buf), fmt, itemRect, ctx.textBrush);
-			cursor += (itemWidth + itemPadding);
-		}
-	}
+        // 2. Update compatibility variables for Railing.cpp hit-testing
+        // We set these to the "average" size so clicks land roughly in the right spot.
+        if (count > 0) {
+            float avgTotal = totalWidth / count;
+            itemWidth = 20.0f;
+            itemPadding = avgTotal - itemWidth;
+        }
 
-	void SetActiveIndex(int index) { activeIndex = index; }
-	void SetHoveredIndex(int index) { hoveredIndex = index; }
+        return totalWidth;
+    }
+
+    void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
+    {
+        float cursor = (ctx.isVertical) ? y : x;
+
+        for (int i = 0; i < count; i++) {
+            Style s = ResolveStyle(i);
+
+            // 1. Calculate Dimensions (Dynamic per item)
+            float padL = s.padding.left;
+            float padR = s.padding.right;
+            float margL = s.margin.left;
+            float margR = s.margin.right;
+            float contentW = 20.0f; // Fixed size for the number
+
+            // The full space this item takes up in the layout
+            float layoutStep = margL + padL + contentW + padR + margR;
+
+            // 2. Calculate the "Box" (Background area)
+            // This is the area inside the margins
+            D2D1_RECT_F boxRect;
+
+            if (!ctx.isVertical) {
+                float startX = cursor + margL; // Skip left margin
+                float visualW = padL + contentW + padR; // Width of color box
+
+                // Vertical margins allow shrinking the height (pill strip effect)
+                float boxTop = y + s.margin.top;
+                float boxBottom = y + h - s.margin.bottom;
+
+                boxRect = D2D1::RectF(startX, boxTop, startX + visualW, boxBottom);
+            }
+            else {
+                // Vertical fallback
+                float startY = cursor + s.margin.top;
+                boxRect = D2D1::RectF(x + s.margin.left, startY, x + w - s.margin.right, startY + s.padding.top + contentW + s.padding.bottom);
+            }
+
+            // 3. Render Background & Border
+            if (s.has_bg || s.has_border || i == activeIndex || i == hoveredIndex) {
+                D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(boxRect, s.radius, s.radius);
+
+                if (s.has_bg) {
+                    ctx.bgBrush->SetColor(s.bg);
+                    ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
+                }
+                if (s.has_border && s.borderWidth > 0.0f) {
+                    ctx.bgBrush->SetColor(s.borderColor);
+                    ctx.rt->DrawRoundedRectangle(rounded, ctx.bgBrush, s.borderWidth);
+                }
+            }
+
+            // 4. Render Text
+            wchar_t buf[4];
+            swprintf_s(buf, L"%d", i + 1);
+
+            ctx.textBrush->SetColor(s.fg);
+            IDWriteTextFormat *fmt = (s.font_weight == "bold") ? ctx.boldTextFormat : ctx.textFormat;
+
+            ctx.rt->DrawTextW(buf, (UINT32)wcslen(buf), fmt, boxRect, ctx.textBrush);
+
+            // 5. Advance Cursor
+            cursor += layoutStep;
+        }
+    }
+
+    void SetActiveIndex(int index) { activeIndex = index; }
+    void SetHoveredIndex(int index) { hoveredIndex = index; }
+
+private:
+    Style ResolveStyle(int i) {
+        Style s = config.itemStyle; // Base
+        if (i == activeIndex && config.states.count("active")) {
+            s = s.Merge(config.states.at("active"));
+        }
+        if (i == hoveredIndex && config.states.count("hover")) {
+            s = s.Merge(config.states.at("hover"));
+        }
+        return s;
+    }
 };

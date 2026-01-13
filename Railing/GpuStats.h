@@ -12,12 +12,12 @@ public:
 
     ~GpuStats() {
         if (dxAdapter) dxAdapter->Release();
-        if (dxFactory) dxFactory->Release();
     }
 
     void Initialize() {
         if (dxAdapter) return; // Prevent double init
 
+        IDXCoreAdapterFactory *dxFactory = nullptr;
         if (FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(&dxFactory)))) return;
 
         IDXCoreAdapterList *list = nullptr;
@@ -25,6 +25,7 @@ public:
 
         // Ask for Hardware GPUs
         dxFactory->CreateAdapterList(1, attribs, IID_PPV_ARGS(&list));
+        dxFactory->Release();
 
         if (list) {
             uint32_t count = list->GetAdapterCount();
@@ -71,6 +72,5 @@ public:
     }
 
 private:
-    IDXCoreAdapterFactory *dxFactory = nullptr;
     IDXCoreAdapter *dxAdapter = nullptr;
 };
