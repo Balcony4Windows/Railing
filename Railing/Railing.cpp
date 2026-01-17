@@ -19,7 +19,6 @@ Railing::Railing() {}
 Railing::~Railing() = default;
 Railing *Railing::instance = nullptr;
 UINT WM_SHELLHOOKMESSAGE = RegisterWindowMessageW(L"SHELLHOOK");
-
 void Railing::CheckForConfigUpdate()
 {
     WIN32_FILE_ATTRIBUTE_DATA fileInfo;
@@ -49,7 +48,7 @@ void Railing::CheckForConfigUpdate()
 bool Railing::Initialize(HINSTANCE hInstance)
 {
     SetThreadDescription(GetCurrentThread(), L"Railing_MainUI");
-    if (FAILED(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED))) return false;
+    if (FAILED(CoInitializeEx(NULL, COINIT_MULTITHREADED))) return false;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     instance = this;
     cachedConfig = ThemeLoader::Load("config.json");
@@ -66,6 +65,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
         renderer = new RailingRenderer(hwndBar, cachedConfig);
         renderer->pWorkspaceManager = &workspaces;
     }
+
     tooltips.Initialize(hwndBar);
     CheckForConfigUpdate(); // Initial load
     GetTopLevelWindows(allWindows);
@@ -140,6 +140,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
     UpdateWindow(hwndBar);
     SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
     EmptyWorkingSet(GetCurrentProcess());
+
     return true;
 }
 
@@ -222,6 +223,7 @@ void Railing::RunMessageLoop()
 LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     Railing *self = nullptr;
+
     if (uMsg == WM_NCCREATE) {
         CREATESTRUCT *cs = reinterpret_cast<CREATESTRUCT *>(lParam);
         self = reinterpret_cast<Railing *>(cs->lpCreateParams);
@@ -548,7 +550,16 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     handled = true;
                 }
                 else if (type == "network") {
-                    CommandExecutor::Execute("shell:ms-settings:network", hwnd);
+                    if (!self->networkFlyout) {
+                        self->networkFlyout = new NetworkFlyout(
+                            self->hInst,
+                            self->renderer->GetFactory(),
+                            self->renderer->GetWriteFactory(),
+                            self->renderer->GetTextFormat(),
+                            self->renderer->GetIconFormat(),
+                            self->renderer->theme);
+                    }
+                    self->networkFlyout->Toggle(targetRect);
                     handled = true;
                 }
                 else if (type == "battery") {
@@ -629,7 +640,6 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                         handled = true;
                     }
                 }
-
                 if (handled) break;
             }
         }
@@ -743,7 +753,6 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                         }
                     }
                     };
-
                 UpdateVisualizers(self->renderer->leftModules);
                 UpdateVisualizers(self->renderer->centerModules);
                 UpdateVisualizers(self->renderer->rightModules);
@@ -766,7 +775,6 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 bool mouseOver = PtInRect(&barRect, pt);
                 bool flyoutOpen = (self->flyout && self->flyout->IsVisible()) ||
                     (self->trayFlyout && self->trayFlyout->IsVisible());
-
                 bool shouldShow = false;
 
                 if (flyoutOpen || mouseOver || self->IsMouseAtEdge()) {
@@ -788,12 +796,10 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     self->showProgress -= speed;
                     if (self->showProgress < 0.0f) self->showProgress = 0.0f;
                 }
-
                 bool progressChanged = (self->showProgress != oldProgress);
                 bool stateChanged = (shouldShow != !self->isHidden);
 
                 if (progressChanged || stateChanged) {
-
                     self->isHidden = !shouldShow;
 
                     float dpi = (float)GetDpiForWindow(hwnd);
@@ -809,18 +815,14 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     if (pos == "bottom") {
                         int shownY = screenH - mBottom - h;
                         int hiddenY = screenH;
-
                         y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
-
                         x = mLeft;
                         w = screenW - mLeft - mRight;
                     }
                     else if (pos == "top") {
                         int shownY = mTop;
                         int hiddenY = -h;
-
                         y = (int)(hiddenY + (shownY - hiddenY) * self->showProgress);
-
                         x = mLeft;
                         w = screenW - mLeft - mRight;
                     }
@@ -842,7 +844,6 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_SETCURSOR:
         if (LOWORD(lParam) == HTCLIENT && self && self->renderer) {
             POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
-
             float dpi = (float)GetDpiForWindow(hwnd);
             float scale = dpi / 96.0f;
             bool hit = false;
@@ -860,26 +861,23 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                     break;
                 }
             }
-
-            if (hit) {
-                SetCursor(LoadCursor(NULL, IDC_HAND));
-            }
-            else {
-                SetCursor(LoadCursor(NULL, IDC_ARROW));
-            }
+            if (hit) SetCursor(LoadCursor(NULL, IDC_HAND));
+            else SetCursor(LoadCursor(NULL, IDC_ARROW));
             return TRUE;
         }
         break;
     case WM_RAILING_AUDIO_UPDATE:
-        if (self) { // Check self, not renderer yet
+        if (self) {
             int volPercent = (int)wParam;
             bool isMuted = (bool)lParam;
+
             self->cachedVolume = volPercent / 100.0f;
             self->cachedMute = isMuted;
 
+            if (self->renderer) {
+                self->renderer->UpdateAudioStats(self->cachedVolume, self->cachedMute);
+            }
             InvalidateRect(hwnd, NULL, FALSE);
-            if (self->flyout && self->flyout->IsVisible())
-                InvalidateRect(self->flyout->hwnd, NULL, FALSE);
         }
         return 0;
     case WM_RAILING_APPBAR: // Re-check size
@@ -917,8 +915,8 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             case HSHELL_RUDEAPPACTIVATED: {
                 Module *m = self->renderer->GetModule("dock");
                 if (m) ((DockModule *)m)->SetAttention(targetHwnd, true);
+                break;
             }
-                                        break;
             case HSHELL_REDRAW: {
                 Module *m = self->renderer->GetModule("dock");
                 if (m) ((DockModule *)m)->InvalidateIcon(targetHwnd);
@@ -931,18 +929,15 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
         }
         break;
     }
-
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void Railing::WinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime)
-{
+void Railing::WinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
     if (event == EVENT_OBJECT_NAMECHANGE && IsWindow(hwnd) && instance && instance->hwndBar)
         InvalidateRect(instance->hwndBar, nullptr, FALSE);
 }
 
-ULONGLONG Railing::GetInterval(std::string type, int def)
-{
+ULONGLONG Railing::GetInterval(std::string type, int def) {
     Module *m = renderer->GetModule(type);
     return (m && m->config.interval > 0) ? (ULONGLONG)m->config.interval : (ULONGLONG)def;
 }
@@ -1023,7 +1018,6 @@ void Railing::GetTopLevelWindows(std::vector<WindowInfo> &outWindows)
             finalList.push_back(ghost);
         }
     }
-
     finalList.insert(finalList.end(), runningWindows.begin(), runningWindows.end());
     outWindows = finalList;
 }
@@ -1048,35 +1042,25 @@ BOOL Railing::IsAppWindow(HWND hwnd)
     // 1. Basic Validity
     if (!IsWindow(hwnd)) return FALSE;
     if (!IsWindowVisible(hwnd)) return FALSE;
-
     // 2. Cloaked Check (Windows 8/10/11 DWM)
     int cloakedVal = 0;
     HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloakedVal, sizeof(cloakedVal));
     if (SUCCEEDED(hr) && cloakedVal != 0) return FALSE;
-
     // 3. Styles
     LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
     LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
-
-    // RULE A: If explicit AppWindow, always show it (even if owned).
+    // If explicit AppWindow, always show it (even if owned).
     if (exStyle & WS_EX_APPWINDOW) return TRUE;
-
-    // RULE B: If explicit ToolWindow, always hide it.
+    // If explicit ToolWindow, always hide it.
     if (exStyle & WS_EX_TOOLWINDOW) return FALSE;
-
-    // RULE C: Ownership Check (The "Strict" Rule)
+    // Ownership Check (The "Strict" Rule)
     HWND owner = GetWindow(hwnd, GW_OWNER);
-    if (owner != NULL) {
-        return FALSE;
-    }
-
-    // RULE D: The "Physical" Check (Anti-Electron)
+    if (owner != NULL) return FALSE;
+    // The "Physical" Check (Anti-Electron)
     RECT rect;
     GetWindowRect(hwnd, &rect);
-    if ((rect.right - rect.left) < 20 || (rect.bottom - rect.top) < 20) {
+    if ((rect.right - rect.left) < 20 || (rect.bottom - rect.top) < 20)
         return FALSE;
-    }
-
     if (hwnd == this->hwndBar) return FALSE;
 
     char className[256];

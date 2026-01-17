@@ -19,7 +19,6 @@
 
 RailingRenderer::RailingRenderer(HWND hwnd, const ThemeConfig &config) : hwnd(hwnd), theme(config)
 {
-    if (theme.global.blur) theme.global.radius = 8.0f; // This is fixed by Windows :(
     char debugBuf[256];
     sprintf_s(debugBuf, "DEBUG: Loaded Config. Layout sizes: L=%d, C=%d, R=%d\n",
         (int)theme.layout.left.size(),
@@ -28,6 +27,8 @@ RailingRenderer::RailingRenderer(HWND hwnd, const ThemeConfig &config) : hwnd(hw
     OutputDebugStringA(debugBuf);
     if (theme.global.blur && theme.global.background.a < 1.0f) {
         EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
+        DWM_WINDOW_CORNER_PREFERENCE preference = (theme.global.radius > 0.0f) ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
     }
     else {
         MARGINS margins = { -1 };
@@ -142,6 +143,9 @@ void RailingRenderer::Reload()
     UpdateBlurRegion();
     if (theme.global.blur && theme.global.background.a < 1.0f) {
         EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
+
+        DWM_WINDOW_CORNER_PREFERENCE preference = (theme.global.radius > 0.0f) ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
     }
 
     Resize();
@@ -166,14 +170,15 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     float currentW = (float)(rc.right - rc.left);
     float currentH = (float)(rc.bottom - rc.top);
 
+    float targetW = currentW;
+    float targetH = currentH;
+
     HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO mi = { sizeof(mi) };
     GetMonitorInfo(hMon, &mi);
     float screenW = (float)(mi.rcMonitor.right - mi.rcMonitor.left);
     float screenH = (float)(mi.rcMonitor.bottom - mi.rcMonitor.top);
 
-    float targetW = 0.0f;
-    float targetH = 0.0f;
     std::string pos = theme.global.position;
     ctx.isVertical = (pos == "left" || pos == "right");
     if (ctx.isVertical) {
@@ -219,17 +224,21 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     ctx.scale = ctx.dpi / 96.0f;
     ctx.hwnd = hwnd;
 
-    if (!theme.global.blur) {
-        D2D1_RECT_F mainRect = D2D1::RectF(0.0f, 0.0f, ctx.logicalWidth, ctx.logicalHeight);
-        float r = theme.global.radius;
-        D2D1_ROUNDED_RECT globalShape = D2D1::RoundedRect(mainRect, r, r);
 
-        if (theme.global.background.a > 0.0f) {
-            ctx.bgBrush->SetColor(theme.global.background);
-            if (r > 0) ctx.rt->FillRoundedRectangle(globalShape, ctx.bgBrush);
-            else ctx.rt->FillRectangle(mainRect, ctx.bgBrush);
-        }
+    D2D1_RECT_F mainRect = D2D1::RectF(
+        0.0f,
+        0.0f,
+        ctx.logicalWidth,
+        ctx.logicalHeight);
+    float r = theme.global.radius;
+    D2D1_ROUNDED_RECT globalShape = D2D1::RoundedRect(mainRect, r, r);
+
+    if (theme.global.background.a > 0.0f) {
+        ctx.bgBrush->SetColor(theme.global.background);
+        if (r > 0) ctx.rt->FillRoundedRectangle(globalShape, ctx.bgBrush);
+        else ctx.rt->FillRectangle(mainRect, ctx.bgBrush);
     }
+
     if (theme.global.borderWidth > 0.0f) {
         float r = theme.global.radius;
         float inset = theme.global.borderWidth / 2.0f;
@@ -244,15 +253,15 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     for (Module *m : centerModules) m->CalculateWidth(ctx);
     for (Module *m : rightModules) m->CalculateWidth(ctx);
 
-    float startX = 0.0f;
+    float startX = 0.0f;  // Start after margin
     float startY = 0.0f;
-    float endX = ctx.logicalWidth;
+    float endX = ctx.logicalWidth; // End before margin
     float endY = ctx.logicalHeight;
 
     // Helper to register keys
     auto RegisterKeys = [&](Module *m) {
-        moduleRects[m->config.type] = m->cachedRect; // Register "audio"
-        if (!m->config.id.empty()) moduleRects[m->config.id] = m->cachedRect; // Register "volume"
+        moduleRects[m->config.type] = m->cachedRect;
+        if (!m->config.id.empty()) moduleRects[m->config.id] = m->cachedRect;
 
         if (m->config.type == "group") {
             GroupModule *g = static_cast<GroupModule *>(m);
@@ -264,7 +273,6 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
         };
 
     if (!ctx.isVertical) {
-        // Horizontal
         float barHeight = ctx.logicalHeight;
         float cursorX = startX;
         for (Module *m : leftModules) {
@@ -292,7 +300,6 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
         }
     }
     else {
-        // Vertical
         float barWidth = ctx.logicalWidth;
         float cursorY = startY;
         for (Module *m : leftModules) {
@@ -336,10 +343,7 @@ void RailingRenderer::Resize()
 void RailingRenderer::UpdateBlurRegion()
 {
     if (!hwnd) return;
-    if (theme.global.blur) {
-        SetWindowRgn(hwnd, nullptr, TRUE); // Reset any existing region
-        return;
-    }
+
     RECT rc;
     GetWindowRect(hwnd, &rc);
     int w = rc.right - rc.left;
@@ -353,9 +357,6 @@ void RailingRenderer::UpdateBlurRegion()
 }
 
 void RailingRenderer::EnableBlur(HWND hwnd, DWORD nColor) {
-    // Force 8px Rounding for the blur surface
-    DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_DONOTROUND;
-    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 
     // Windows 10 Fallback (Windows 11 is too milky)
     HMODULE hUser = LoadLibrary(L"user32.dll");
@@ -368,6 +369,12 @@ void RailingRenderer::EnableBlur(HWND hwnd, DWORD nColor) {
             WINDOWCOMPOSITIONATTRIBDATA data = { WCA_ACCENT_POLICY, &policy, sizeof(policy) };
             pSetWindowCompositionAttribute(hwnd, &data);
         }
+    }
+    else {
+        // Force 8px Rounding for the blur surface
+        DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUND;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
+
     }
 }
 bool HitTestRecursive(const std::vector<Module *> &list, POINT pt, float scale) {

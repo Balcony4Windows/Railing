@@ -15,6 +15,7 @@
 #include <Psapi.h>
 #include "WorkspaceManager.h"
 #include "AudioCapture.h"
+#include "NetworkFlyout.h"
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)
@@ -48,8 +49,12 @@ public:
 	RailingRenderer *renderer = nullptr;
 	VolumeFlyout *flyout = nullptr;
 	TrayFlyout *trayFlyout;
+	NetworkFlyout *networkFlyout;
 	WorkspaceManager workspaces;
 	AudioCapture visualizerBackend;
+
+	float cachedVolume = 0.0f;
+	bool cachedMute = false;
 
 	static std::string ToUtf8(const std::wstring &wstr) {
 		if (wstr.empty()) return std::string();
@@ -125,8 +130,7 @@ private:
 	ULONGLONG lastGpuUpdate = 0;
 	ULONGLONG lastNetUpdate = 0;
 	ULONGLONG lastClockUpdate = 0;
-	float cachedVolume = 0;
-	bool cachedMute = false;
+
 	SystemStats stats;
 	GpuStats gpuStats;
 	int cachedGpuTemp = 0;

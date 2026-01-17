@@ -263,6 +263,18 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             }
             break;
         }
+        case WM_RAILING_AUDIO_UPDATE:
+            if (Railing::instance && Railing::instance->renderer) {
+                float vol = (float)wParam / 100.0f;
+                bool mute = (bool)lParam;
+
+                Railing::instance->renderer->UpdateAudioStats(vol, mute);
+                Railing::instance->cachedVolume = vol;
+                Railing::instance->cachedMute = mute;
+
+                InvalidateRect(Railing::instance->hwndBar, NULL, FALSE);
+            }
+            return 0;
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
                 if (self->animState != AnimationState::Hidden && self->animState != AnimationState::Exiting) {

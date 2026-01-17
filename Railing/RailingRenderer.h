@@ -23,6 +23,11 @@ public:
     RailingRenderer(HWND hwnd, const ThemeConfig &config);
     ~RailingRenderer();
 
+    void UpdateAudioStats(float volume, bool isMuted) {
+        this->currentStats.volume = volume;
+        this->currentStats.isMuted = isMuted;
+    }
+
     ThemeConfig theme;
     std::vector<Module *> leftModules;
     std::vector<Module *> centerModules;
@@ -45,6 +50,8 @@ public:
     ID2D1Factory *GetFactory() const { return pFactory; }
     IWICImagingFactory *GetWICFactory() const { return pWICFactory; }
     IDWriteFactory *GetWriteFactory() const { return pWriteFactory; }
+    IDWriteTextFormat *GetTextFormat() const { return pTextFormat; }
+    IDWriteTextFormat *GetIconFormat() const { return pIconFormat; }
     void UpdateStats(const SystemStatusData &data) { currentStats = data; }
 private:
     HWND hwnd;

@@ -15,6 +15,7 @@ public:
     TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, const ThemeConfig &config);
     ~TrayFlyout();
 
+    HWND hwnd = nullptr;
     void Toggle(RECT iconRect);
     void Draw();
     bool IsVisible() { return IsWindowVisible(hwnd); }
@@ -23,7 +24,6 @@ private:
 
     void OnClick(int x, int y, bool isRightClick);
 
-    HWND hwnd = nullptr;
     ThemeConfig::Global style;
     void UpdateBitmapCache();
 

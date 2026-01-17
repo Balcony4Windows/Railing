@@ -85,8 +85,7 @@
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
+      <Command>xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -107,8 +106,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
+      <Command>xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -127,8 +125,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
+      <Command>xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -149,8 +146,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(SolutionDir)presets\Fonts" "$(OutDir)Fonts" /I /Y /E
-xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
+      <Command>xcopy "$(SolutionDir)presets\Balcony.ico" "$(OutDir)" /Y /D
 xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -171,6 +167,8 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="Module.h" />
     <ClInclude Include="ModuleFactory.h" />
     <ClInclude Include="ModulesConcrete.h" />
+    <ClInclude Include="NetworkBackend.h" />
+    <ClInclude Include="NetworkFlyout.h" />
     <ClInclude Include="PingModule.h" />
     <ClInclude Include="Railing.h" />
     <ClInclude Include="RailingRenderer.h" />
@@ -195,6 +193,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClCompile Include="CommandExecutor.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Module.cpp" />
+    <ClCompile Include="NetworkFlyout.cpp" />
     <ClCompile Include="Railing.cpp" />
     <ClCompile Include="RailingRenderer.cpp" />
     <ClCompile Include="SystemStats.cpp" />

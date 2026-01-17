@@ -25,7 +25,9 @@ public:
 			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
 		}
 		std::wstring text = L"\uE774"; // Default Globe
-		if (config.type == "network") text = L"\uE774";
+		if (config.type == "network") {
+			text = L"\uE774";
+		}
 
 		if (config.type == "audio") {
 			if (ctx.isMuted || ctx.volume == 0.0f) text = L"\uE74F"; // Mute

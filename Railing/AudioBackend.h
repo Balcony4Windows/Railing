@@ -12,16 +12,7 @@
 #pragma comment(lib, "Mmdevapi.lib")
 #pragma comment(lib, "Propsys.lib")
 
-#define WM_RAILING_AUDIO_UPDATE (WM_USER + 20)
-
-inline void LogAudio(const char *fmt, ...) {
-    char buf[1024];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    OutputDebugStringA(buf);
-}
+#define WM_RAILING_AUDIO_UPDATE (WM_APP + 20)
 
 class CAudioEndpointVolumeCallback : public IAudioEndpointVolumeCallback
 {
@@ -47,7 +38,7 @@ public:
         return E_NOINTERFACE;
     }
 
-    // 2. The Push Logic (WPARAM = Volume 0-100, LPARAM = Mute)
+    // The Push Logic (WPARAM = Volume 0-100, LPARAM = Mute)
     HRESULT STDMETHODCALLTYPE OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA pNotify) {
         if (_hwndTarget) {
             int volPercent = (int)(pNotify->fMasterVolume * 100);
@@ -102,20 +93,15 @@ public:
 
     void EnsureInitialized(HWND hwnd) {
         hwndMain = hwnd;
-        LogAudio("AudioBackend: EnsureInitialized called for HWND %p\n", hwnd);
 
         // 1. Try Initialize Enumerator
         if (!pEnumerator) {
             HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void **)&pEnumerator);
             if (FAILED(hr)) {
-                LogAudio("AudioBackend: CoCreateInstance Failed! HR=0x%X. Trying CoInit...\n", hr);
                 // Try fixing COM
                 CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
                 hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator), (void **)&pEnumerator);
             }
-
-            if (SUCCEEDED(hr)) LogAudio("AudioBackend: Enumerator Created.\n");
-            else LogAudio("AudioBackend: CRITICAL FAILURE. Could not create Enumerator. HR=0x%X\n", hr);
         }
 
         // 2. Try Update Endpoint
@@ -125,7 +111,6 @@ public:
     }
 
     void UpdateEndpoint() {
-        LogAudio("AudioBackend: Updating Endpoint...\n");
         if (!pEnumerator) return;
 
         // Cleanup
@@ -139,32 +124,20 @@ public:
 
         // Get Device
         HRESULT hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &pDevice);
-        if (FAILED(hr)) {
-            LogAudio("AudioBackend: GetDefaultAudioEndpoint Failed (No Speaker?). HR=0x%X\n", hr);
-            return;
-        }
+        if (FAILED(hr)) return;
 
         // Activate Volume
         hr = pDevice->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, NULL, (void **)&pVolume);
-        if (FAILED(hr)) {
-            LogAudio("AudioBackend: Device Activate Failed! HR=0x%X. (Likely Threading Issue)\n", hr);
-            return;
-        }
-
-        LogAudio("AudioBackend: Volume Interface Acquired!\n");
+        if (FAILED(hr)) return;
 
         if (pVolume && hwndMain) {
             pCallback = new CAudioEndpointVolumeCallback(hwndMain);
             hr = pVolume->RegisterControlChangeNotify(pCallback);
-            if (FAILED(hr)) LogAudio("AudioBackend: Register Callback Failed. HR=0x%X\n", hr);
-            else LogAudio("AudioBackend: Callback Registered.\n");
-
             // Force initial update
             float vol = 0.0f;
             BOOL mute = FALSE;
             pVolume->GetMasterVolumeLevelScalar(&vol);
             pVolume->GetMute(&mute);
-            LogAudio("AudioBackend: Sending Initial State -> Vol: %.2f, Mute: %d\n", vol, mute);
             PostMessage(hwndMain, WM_RAILING_AUDIO_UPDATE, (WPARAM)(vol * 100), (LPARAM)mute);
         }
     }

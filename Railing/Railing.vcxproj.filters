@@ -123,6 +123,12 @@
     <ClInclude Include="VisualizerModule.h">
       <Filter>Header Files\ModuleTypes</Filter>
     </ClInclude>
+    <ClInclude Include="NetworkBackend.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="NetworkFlyout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Railing.cpp">
@@ -159,6 +165,9 @@
       <Filter>Themes</Filter>
     </ClCompile>
     <ClCompile Include="CommandExecutor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="NetworkFlyout.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

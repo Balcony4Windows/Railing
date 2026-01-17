@@ -1,17 +1,14 @@
 #include "AppBarRegistration.h"
 #include "Railing.h"
 
-// Register the window as an AppBar
 void RegisterAppBar(HWND hwnd)
 {
     APPBARDATA abd = { sizeof(abd) };
     abd.hWnd = hwnd;
     abd.uCallbackMessage = WM_RAILING_APPBAR;
-    // ABM_NEW tells Windows "I am a new toolbar"
     SHAppBarMessage(ABM_NEW, &abd);
 }
 
-// Unregister (Critical for cleanup)
 void UnregisterAppBar(HWND hwnd)
 {
     APPBARDATA abd = { sizeof(abd) };
@@ -21,6 +18,7 @@ void UnregisterAppBar(HWND hwnd)
 
 void UpdateAppBarPosition(HWND hwnd, ThemeConfig &theme)
 {
+
     static bool isUpdating = false;
     if (isUpdating) return;
     isUpdating = true;
