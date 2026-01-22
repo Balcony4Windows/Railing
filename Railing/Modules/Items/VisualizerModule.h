@@ -60,15 +60,8 @@ public:
 			}
 			if (count > 0) avg /= count;
 
-			// --- FIX: Simplified Scaling ---
-			// 'avg' is already 0.0-1.0 based on decibels. 
-			// We just apply a linear boost/cut and a treble bias.
-
 			float weighting = 1.0f + ((float)i / numBars) * 0.5f; // Slight treble boost
 			float targetValue = avg * sensitivity * weighting;
-			// -------------------------------
-
-			// Physics (Smoothing)
 			if (targetValue > smoothFrequencies[i]) {
 				smoothFrequencies[i] = (smoothFrequencies[i] * 0.6f) + (targetValue * 0.4f);
 			}
@@ -77,7 +70,6 @@ public:
 				if (smoothFrequencies[i] < 0) smoothFrequencies[i] = 0;
 			}
 
-			// Clamp strictly for render safety
 			if (smoothFrequencies[i] > 1.0f) smoothFrequencies[i] = 1.0f;
 		}
 	}
@@ -97,13 +89,16 @@ public:
 
 		for (size_t i = 0; i < smoothFrequencies.size(); i++) {
 			float val = smoothFrequencies[i];
+			if (val > 1.0f) val = 1.0f;
 
 			float barH = val * h;
+			if (barH < 1.0f && val > 0.001f) barH = 1.0f;
+			else if (barH < 0.1f) continue;
 			float barY = y + h - barH;
 			float barX = x + i * (barWidth + barSpacing);
 			if (barH < 1.0f) continue;
 
-			D2D1_RECT_F rect = D2D1::RectF(barX, barY, barX + barWidth, y + h);
+			D2D1_RECT_F rect = D2D1::RectF(barX, barY, barX + barWidth, y + h);  
 			ctx.rt->FillRectangle(rect, ctx.bgBrush);
 		}
 	}

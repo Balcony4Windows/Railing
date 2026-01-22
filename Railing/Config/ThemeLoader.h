@@ -87,6 +87,7 @@ public:
 			mod.latitude = val.value("latitude", "");
 			mod.longitude = val.value("longitude", "");
 			mod.tempFormat = val.value("temp_format", "fahrenheit");
+			mod.tooltip = val.value("tooltip", "");
 			mod.baseStyle = Style();
 			if (val.contains("target")) mod.target = val["target"].get<std::string>();
 			if (val.contains("on_click")) mod.onClick = val["on_click"].get<std::string>();
@@ -112,7 +113,7 @@ public:
 				for (auto &[stateName, stateStyle] : val["states"].items()) mod.states[stateName] = ParseStyle(stateStyle);
 			}
 			if (val.contains("visualizer")) {
-					auto &v = j["visualizer"];
+					auto &v = val["visualizer"];
 					if (v.contains("bars")) mod.viz.numBars = v["bars"].get<int>();
 					if (v.contains("sensitivity")) mod.viz.sensitivity = v["sensitivity"].get<float>();
 					if (v.contains("decay")) mod.viz.decay = v["decay"].get<float>();

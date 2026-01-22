@@ -81,6 +81,7 @@ struct ModuleConfig {
     std::string onClick; // e.g., "open my app"
     std::string target; // For ping module specifically
     std::string icon; // icon location or glyph
+    std::string tooltip; // e.g., "CMD"
     int interval = 0;
 
     Style baseStyle;

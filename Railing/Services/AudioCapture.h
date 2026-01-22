@@ -11,7 +11,7 @@
 
 class AudioCapture {
 public:
-    AudioCapture() {}
+    AudioCapture() { Start(); }
     ~AudioCapture() { Stop(); }
 
     void Start() {

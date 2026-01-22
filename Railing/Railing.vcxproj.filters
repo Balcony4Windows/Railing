@@ -1,175 +1,157 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
     <Filter Include="Resource Files">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Themes">
-      <UniqueIdentifier>{52e2108d-3be4-4901-a84e-066b2ef1efa6}</UniqueIdentifier>
+    <Filter Include="UI">
+      <UniqueIdentifier>{14fde674-2709-458c-8016-5e95065f118b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\ModuleTypes">
-      <UniqueIdentifier>{696dcef2-2bbc-4a21-ae21-ba058f8ad6a3}</UniqueIdentifier>
+    <Filter Include="App">
+      <UniqueIdentifier>{c08b126c-fdb8-4870-8bb7-6d5e28150563}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Modules">
+      <UniqueIdentifier>{8eeaa9d4-732e-411e-876d-ccbfa9331aa6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Modules\Items">
+      <UniqueIdentifier>{36ce11fa-1991-47c5-aa87-a9b7dfb37fda}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Modules\Base">
+      <UniqueIdentifier>{29d32b45-a137-4784-979a-8a803dd8c396}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Externals">
+      <UniqueIdentifier>{6a11bf07-f8bd-4280-98e6-50edee65c52a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Services">
+      <UniqueIdentifier>{fc1a21ca-e8cf-40f3-b3a3-a11e8515cb37}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Renderer">
+      <UniqueIdentifier>{1ce1b8dd-b93c-4f11-b324-06265c86a71e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Config">
+      <UniqueIdentifier>{a99f81fc-7ebc-4b16-9916-a099849e7b13}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Railing.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="UI\VolumeFlyout.h">
+      <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="UI\TrayFlyout.h">
+      <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Types.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="UI\NetworkFlyout.h">
+      <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="WindowManager.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="UI\TooltipHandler.h">
+      <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="RailingRenderer.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="App\AppBarRegistration.h">
+      <Filter>App</Filter>
     </ClInclude>
-    <ClInclude Include="RenderContext.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="App\Railing.h">
+      <Filter>App</Filter>
     </ClInclude>
-    <ClInclude Include="AudioBackend.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="App\WindowManager.h">
+      <Filter>App</Filter>
     </ClInclude>
-    <ClInclude Include="VolumeFlyout.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="App\WorkspaceManager.h">
+      <Filter>App</Filter>
     </ClInclude>
-    <ClInclude Include="TrayFlyout.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\AppIconModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="SystemStats.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\ClockModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="TooltipHandler.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\CustomModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="Module.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\DockModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="ModulesConcrete.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\GpuModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="ModuleFactory.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\GroupModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="GpuStats.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\IconModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="AppBarRegistration.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Modules\Items\PingModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="ThemeTypes.h">
-      <Filter>Themes</Filter>
+    <ClInclude Include="Modules\Items\RamModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="CustomModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Items\VisualizerModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="GpuModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Items\WeatherModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="ClockModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Items\WorkspacesModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="GroupModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Items\CpuModule.h">
+      <Filter>Modules\Items</Filter>
     </ClInclude>
-    <ClInclude Include="WorkspacesModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Base\ModulesConcrete.h">
+      <Filter>Modules\Base</Filter>
     </ClInclude>
-    <ClInclude Include="IconModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Base\ModuleFactory.h">
+      <Filter>Modules\Base</Filter>
     </ClInclude>
-    <ClInclude Include="CpuModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Modules\Base\Module.h">
+      <Filter>Modules\Base</Filter>
     </ClInclude>
-    <ClInclude Include="RamModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="External\nlohmann\json.hpp">
+      <Filter>Externals</Filter>
     </ClInclude>
-    <ClInclude Include="AppIconModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Services\AudioBackend.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="PingModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Services\AudioCapture.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="CommandExecutor.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Services\CommandExecutor.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="WeatherModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Services\GpuStats.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="DockModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Services\NetworkBackend.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="WorkspaceManager.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Services\SimpleFFT.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="SimpleFFT.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Services\SystemStats.h">
+      <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="AudioCapture.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Renderer\RenderContext.h">
+      <Filter>Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="VisualizerModule.h">
-      <Filter>Header Files\ModuleTypes</Filter>
+    <ClInclude Include="Renderer\RailingRenderer.h">
+      <Filter>Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="NetworkBackend.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Config\Types.h">
+      <Filter>Config</Filter>
     </ClInclude>
-    <ClInclude Include="NetworkFlyout.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Config\ThemeLoader.h">
+      <Filter>Config</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="Railing.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="WindowManager.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="RailingRenderer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VolumeFlyout.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TrayFlyout.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SystemStats.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TooltipHandler.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Module.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="AppBarRegistration.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ThemeLoader.h">
-      <Filter>Themes</Filter>
-    </ClCompile>
-    <ClCompile Include="CommandExecutor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="NetworkFlyout.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <ClInclude Include="Config\ThemeTypes.h">
+      <Filter>Config</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="WindowMonitor.h">
+      <Filter>Services</Filter>
+    </ClInclude>
+    <ClInclude Include="InputManager.h">
+      <Filter>App</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">
@@ -177,8 +159,47 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\Balcony.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
+    <ClCompile Include="UI\TrayFlyout.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\VolumeFlyout.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\NetworkFlyout.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\TooltipHandler.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="App\AppBarRegistration.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="App\Main.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="App\Railing.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="App\WindowManager.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="Modules\Base\Module.cpp">
+      <Filter>Modules\Base</Filter>
+    </ClCompile>
+    <ClCompile Include="Services\CommandExecutor.cpp">
+      <Filter>Services</Filter>
+    </ClCompile>
+    <ClCompile Include="Services\SystemStats.cpp">
+      <Filter>Services</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RailingRenderer.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="WindowMonitor.cpp">
+      <Filter>Services</Filter>
+    </ClCompile>
+    <ClCompile Include="InputManager.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -74,10 +74,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);WIN32_LEAN_AND_MEAN</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)External;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)External;$(ProjectDir)Config;$(ProjectDir)App;$(ProjectDir)Renderer;$(ProjectDir)Services;$(ProjectDir)UI;$(ProjectDir)Modules\Base;$(ProjectDir)Modules\Items;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -95,10 +95,10 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);WIN32_LEAN_AND_MEAN</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)External;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)External;$(ProjectDir)Config;$(ProjectDir)App;$(ProjectDir)Renderer;$(ProjectDir)Services;$(ProjectDir)UI;$(ProjectDir)Modules\Base;$(ProjectDir)Modules\Items;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -114,10 +114,10 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);WIN32_LEAN_AND_MEAN</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)External;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)External;$(ProjectDir)Config;$(ProjectDir)App;$(ProjectDir)Renderer;$(ProjectDir)Services;$(ProjectDir)UI;$(ProjectDir)Modules\Base;$(ProjectDir)Modules\Items;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -135,10 +135,10 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);WIN32_LEAN_AND_MEAN</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)External;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)External;$(ProjectDir)Config;$(ProjectDir)App;$(ProjectDir)Renderer;$(ProjectDir)Services;$(ProjectDir)UI;$(ProjectDir)Modules\Base;$(ProjectDir)Modules\Items;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -151,63 +151,65 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="AppBarRegistration.h" />
-    <ClInclude Include="AppIconModule.h" />
-    <ClInclude Include="AudioBackend.h" />
-    <ClInclude Include="AudioCapture.h" />
-    <ClInclude Include="ClockModule.h" />
-    <ClInclude Include="CommandExecutor.h" />
-    <ClInclude Include="CpuModule.h" />
-    <ClInclude Include="CustomModule.h" />
-    <ClInclude Include="DockModule.h" />
-    <ClInclude Include="GpuModule.h" />
-    <ClInclude Include="GpuStats.h" />
-    <ClInclude Include="GroupModule.h" />
-    <ClInclude Include="IconModule.h" />
-    <ClInclude Include="Module.h" />
-    <ClInclude Include="ModuleFactory.h" />
-    <ClInclude Include="ModulesConcrete.h" />
-    <ClInclude Include="NetworkBackend.h" />
-    <ClInclude Include="NetworkFlyout.h" />
-    <ClInclude Include="PingModule.h" />
-    <ClInclude Include="Railing.h" />
-    <ClInclude Include="RailingRenderer.h" />
-    <ClInclude Include="RamModule.h" />
-    <ClInclude Include="RenderContext.h" />
+    <ClInclude Include="App\AppBarRegistration.h" />
+    <ClInclude Include="App\Railing.h" />
+    <ClInclude Include="App\WindowManager.h" />
+    <ClInclude Include="App\WorkspaceManager.h" />
+    <ClInclude Include="Config\ThemeLoader.h" />
+    <ClInclude Include="Config\ThemeTypes.h" />
+    <ClInclude Include="Config\Types.h" />
+    <ClInclude Include="External\nlohmann\json.hpp" />
+    <ClInclude Include="InputManager.h" />
+    <ClInclude Include="Modules\Base\Module.h" />
+    <ClInclude Include="Modules\Base\ModuleFactory.h" />
+    <ClInclude Include="Modules\Base\ModulesConcrete.h" />
+    <ClInclude Include="Modules\Items\AppIconModule.h" />
+    <ClInclude Include="Modules\Items\ClockModule.h" />
+    <ClInclude Include="Modules\Items\CpuModule.h" />
+    <ClInclude Include="Modules\Items\CustomModule.h" />
+    <ClInclude Include="Modules\Items\DockModule.h" />
+    <ClInclude Include="Modules\Items\GpuModule.h" />
+    <ClInclude Include="Modules\Items\GroupModule.h" />
+    <ClInclude Include="Modules\Items\IconModule.h" />
+    <ClInclude Include="Modules\Items\PingModule.h" />
+    <ClInclude Include="Modules\Items\RamModule.h" />
+    <ClInclude Include="Modules\Items\VisualizerModule.h" />
+    <ClInclude Include="Modules\Items\WeatherModule.h" />
+    <ClInclude Include="Modules\Items\WorkspacesModule.h" />
+    <ClInclude Include="Renderer\RailingRenderer.h" />
+    <ClInclude Include="Renderer\RenderContext.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="SimpleFFT.h" />
-    <ClInclude Include="SystemStats.h" />
-    <ClInclude Include="ThemeTypes.h" />
-    <ClInclude Include="TooltipHandler.h" />
-    <ClInclude Include="TrayFlyout.h" />
-    <ClInclude Include="Types.h" />
-    <ClInclude Include="VisualizerModule.h" />
-    <ClInclude Include="VolumeFlyout.h" />
-    <ClInclude Include="WeatherModule.h" />
-    <ClInclude Include="WindowManager.h" />
-    <ClInclude Include="WorkspaceManager.h" />
-    <ClInclude Include="WorkspacesModule.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="AppBarRegistration.cpp" />
-    <ClCompile Include="CommandExecutor.cpp" />
-    <ClCompile Include="Main.cpp" />
-    <ClCompile Include="Module.cpp" />
-    <ClCompile Include="NetworkFlyout.cpp" />
-    <ClCompile Include="Railing.cpp" />
-    <ClCompile Include="RailingRenderer.cpp" />
-    <ClCompile Include="SystemStats.cpp" />
-    <ClCompile Include="ThemeLoader.h" />
-    <ClCompile Include="TooltipHandler.cpp" />
-    <ClCompile Include="TrayFlyout.cpp" />
-    <ClCompile Include="VolumeFlyout.cpp" />
-    <ClCompile Include="WindowManager.cpp" />
+    <ClInclude Include="Services\AudioBackend.h" />
+    <ClInclude Include="Services\AudioCapture.h" />
+    <ClInclude Include="Services\CommandExecutor.h" />
+    <ClInclude Include="Services\GpuStats.h" />
+    <ClInclude Include="Services\NetworkBackend.h" />
+    <ClInclude Include="Services\SimpleFFT.h" />
+    <ClInclude Include="Services\SystemStats.h" />
+    <ClInclude Include="UI\NetworkFlyout.h" />
+    <ClInclude Include="UI\TooltipHandler.h" />
+    <ClInclude Include="UI\TrayFlyout.h" />
+    <ClInclude Include="UI\VolumeFlyout.h" />
+    <ClInclude Include="WindowMonitor.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="..\Balcony.ico" />
+    <ClCompile Include="App\AppBarRegistration.cpp" />
+    <ClCompile Include="App\Main.cpp" />
+    <ClCompile Include="App\Railing.cpp" />
+    <ClCompile Include="App\WindowManager.cpp" />
+    <ClCompile Include="InputManager.cpp" />
+    <ClCompile Include="Modules\Base\Module.cpp" />
+    <ClCompile Include="Renderer\RailingRenderer.cpp" />
+    <ClCompile Include="Services\CommandExecutor.cpp" />
+    <ClCompile Include="Services\SystemStats.cpp" />
+    <ClCompile Include="UI\NetworkFlyout.cpp" />
+    <ClCompile Include="UI\TooltipHandler.cpp" />
+    <ClCompile Include="UI\TrayFlyout.cpp" />
+    <ClCompile Include="UI\VolumeFlyout.cpp" />
+    <ClCompile Include="WindowMonitor.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

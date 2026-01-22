@@ -1,4 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
 #include <Winsock2.h>
 #include "Railing.h"
 #include <windowsx.h>
@@ -381,6 +380,8 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             if (hitModule) {
                 std::string type = hitModule->config.type;
 
+                if (type == "custom") {
+                }
                 if (type == "audio") newText = L"Volume";
                 else if (type == "network") newText = L"Network";
                 else if (type == "battery") newText = L"Battery";

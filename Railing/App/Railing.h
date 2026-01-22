@@ -1,4 +1,8 @@
 #pragma once
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
 #include <Windows.h>
 #include <vector>
 #include <shellapi.h> // For SHAppBarMessage
@@ -36,6 +40,7 @@ public:
 	~Railing();
 	static Railing *instance;
 	HWND hwndBar = nullptr;
+	HINSTANCE hInst = nullptr;
 	TooltipHandler tooltips;
 	ThemeConfig cachedConfig;
 	FILETIME lastConfigWriteTime = { 0 };
@@ -45,6 +50,9 @@ public:
 	void RunMessageLoop();
 	BOOL IsAppWindow(HWND hwnd);
 	void GetTopLevelWindows(std::vector<WindowInfo> &outWindows);
+
+	std::vector <WindowInfo> allWindows;
+	std::vector<std::wstring> pinnedApps;
 
 	RailingRenderer *renderer = nullptr;
 	VolumeFlyout *flyout = nullptr;
@@ -62,6 +70,33 @@ public:
 		std::string strTo(size_needed, 0);
 		WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
 		return strTo;
+	}
+
+	inline void SavePinnedApps() {
+		wchar_t exePath[MAX_PATH];
+		GetModuleFileNameW(NULL, exePath, MAX_PATH);
+		std::wstring path(exePath);
+		path = path.substr(0, path.find_last_of(L"\\/"));
+		std::wstring fullPathW = path + L"\\config.json";
+
+		nlohmann::json j;
+		std::ifstream i(fullPathW);
+		if (i.is_open()) {
+			try { i >> j; }
+			catch (...) {}
+			i.close();
+		}
+
+		j["pinned"] = nlohmann::json::array();
+		for (const auto &pPath : pinnedApps) {
+			j["pinned"].push_back(ToUtf8(pPath));
+		}
+
+		std::ofstream o(fullPathW);
+		if (o.is_open()) {
+			o << j.dump(2);
+			o.close();
+		}
 	}
 private:
 	HWND CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config);
@@ -91,39 +126,10 @@ private:
 	static void CALLBACK WinEventProc(
 		HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
 	inline ULONGLONG GetInterval(std::string type, int def);
-	HINSTANCE hInst = nullptr;
+
 	HWINEVENTHOOK titleHook = nullptr;
 	UINT shellMsgId = 0;
 	std::vector <WindowInfo> windows;
-	std::vector <WindowInfo> allWindows;
-	std::vector<std::wstring> pinnedApps;
-
-	inline void SavePinnedApps() {
-		wchar_t exePath[MAX_PATH];
-		GetModuleFileNameW(NULL, exePath, MAX_PATH);
-		std::wstring path(exePath);
-		path = path.substr(0, path.find_last_of(L"\\/"));
-		std::wstring fullPathW = path + L"\\config.json";
-
-		nlohmann::json j;
-		std::ifstream i(fullPathW);
-		if (i.is_open()) {
-			try { i >> j; }
-			catch (...) {}
-			i.close();
-		}
-
-		j["pinned"] = nlohmann::json::array();
-		for (const auto &pPath : pinnedApps) {
-			j["pinned"].push_back(ToUtf8(pPath));
-		}
-
-		std::ofstream o(fullPathW);
-		if (o.is_open()) {
-			o << j.dump(2);
-			o.close();
-		}
-	}
 
 	ULONGLONG lastCpuUpdate = 0;
 	ULONGLONG lastRamUpdate = 0;

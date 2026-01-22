@@ -35,7 +35,7 @@ public:
 		}
 		DrawProgressBar(ctx, x, y, w, h, ctx.cpuUsage / 100.0f, color);
 
-		ctx.textBrush->SetColor(D2D1::ColorF(1, 1, 1, 1));
+		ctx.textBrush->SetColor(s.fg);
 		IDWriteTextFormat *fmt = (s.font_weight == "bold") ? ctx.boldTextFormat : ctx.textFormat;
 		ctx.rt->DrawTextW(cachedStr.c_str(), (UINT32)cachedStr.length(), fmt, D2D1::RectF(x, y, x + w, y + h), ctx.textBrush);
 	}
