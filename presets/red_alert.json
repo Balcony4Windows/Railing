@@ -22,7 +22,7 @@
   },
   "label_sys": {
     "type": "custom",
-    "format": "/// SYSTEM_STATUS",
+    "format": "/// CLEAR_STATUS",
     "on_click": "toggle_desktop",
     "style": { "fg": "#FF660000", "padding": [0, 12], "margin": [0, 0, 0, 0], "font_weight": "bold" }
   },
@@ -43,6 +43,7 @@
   },
   "alert_clock": {
     "type": "clock",
+    "on_click": "toggle_start",
     "format": "- %H:%M:%S -",
     "style": { "fg": "#FFFFFFFF", "bg": "#FFCC0000", "padding": [0, 20], "margin": [0, 0, 0, 0], "radius": 0, "font_weight": "bold" }
   },

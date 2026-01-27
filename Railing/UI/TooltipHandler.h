@@ -4,6 +4,7 @@
 
 class TooltipHandler {
 public:
+    static TooltipHandler instance;
     TooltipHandler();
     ~TooltipHandler();
 

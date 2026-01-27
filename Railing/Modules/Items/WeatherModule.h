@@ -28,18 +28,31 @@ class WeatherModule : public Module {
     }
 
     // Mapping WMO codes to Emojis (Open-Meteo standard)
-    std::string GetWeatherIcon(int code) {
-        if (code == 0) return (const char *)u8"☀️";
-        if (code == 1 || code == 2 || code == 3) return (const char *)u8"⛅";
-        if (code == 45 || code == 48) return (const char *)u8"🌫️";
-        if (code >= 51 && code <= 55) return (const char *)u8"🌧️";
-        if (code >= 56 && code <= 57) return (const char *)u8"🌨️";
-        if (code >= 61 && code <= 65) return (const char *)u8"🌧️";
-        if (code >= 66 && code <= 67) return (const char *)u8"🌨️";
-        if (code >= 71 && code <= 77) return (const char *)u8"❄️";
-        if (code >= 80 && code <= 82) return (const char *)u8"🌦️";
-        if (code >= 85 && code <= 86) return (const char *)u8"❄️";
-        if (code >= 95 && code <= 99) return (const char *)u8"⛈️";
+    std::string GetWeatherIcon(int code, int hour24=-1)
+    {
+        if (hour24 < 0) {
+            std::time_t t = std::time(nullptr);
+            std::tm localTime;
+            localtime_s(&localTime, &t);
+            hour24 = localTime.tm_hour;
+        }
+
+        const bool isNight = (hour24 >= 19 || hour24 < 6);
+
+        if (code == 0)
+            return (const char *)(isNight ? u8"🌙" : u8"☀️");
+        else if (code == 1 || code == 2 || code == 3)
+            return (const char *)(isNight ? u8"🌙☁️" : u8"⛅");
+        else if (code == 45 || code == 48) return (const char *)u8"🌫️";
+        else if (code >= 51 && code <= 55) return (const char *)u8"🌧️";
+        else if (code >= 61 && code <= 65) return (const char *)u8"🌧️";
+        else if (code >= 80 && code <= 82) return (const char *)u8"🌦️";
+        else if (code >= 56 && code <= 57) return (const char *)u8"🌨️";
+        else if (code >= 66 && code <= 67) return (const char *)u8"🌨️";
+        else if (code >= 71 && code <= 77) return (const char *)u8"❄️";
+        else if (code >= 85 && code <= 86) return (const char *)u8"❄️";
+        else if (code >= 95 && code <= 99) return (const char *)u8"⛈️";
+
         return (const char *)u8"❓";
     }
 

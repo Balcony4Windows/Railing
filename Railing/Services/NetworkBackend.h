@@ -26,9 +26,15 @@ public:
 	GUID interfaceGuid = { 0 };
 
 	NetworkBackend() {
-		WlanOpenHandle(dwMaxClient, NULL, &dwCurVersion, &hClient);
+		EnsureHandle();
 	}
 	~NetworkBackend() { if (hClient) WlanCloseHandle(hClient, NULL); }
+
+	bool EnsureHandle() {
+		if (hClient) return true;
+		DWORD res = WlanOpenHandle(dwMaxClient, NULL, &dwCurVersion, &hClient);
+		return (res == ERROR_SUCCESS && hClient != NULL);
+	}
 
 	void RequestScan() {
 		if (!hClient) return;
@@ -37,6 +43,36 @@ public:
 			if (pIfList->dwNumberOfItems > 0) {
 				this->interfaceGuid = pIfList->InterfaceInfo[0].InterfaceGuid;
 				WlanScan(hClient, &this->interfaceGuid, NULL, NULL, NULL);
+			}
+			WlanFreeMemory(pIfList);
+		}
+	}
+
+	void GetCurrentStatus(bool &isConnected, int &signalQuality) {
+		isConnected = false;
+		signalQuality = 0;
+		if (!EnsureHandle()) return;
+
+		PWLAN_INTERFACE_INFO_LIST pIfList = NULL;
+		if (WlanEnumInterfaces(hClient, NULL, &pIfList) == ERROR_SUCCESS) {
+
+			for (DWORD i = 0; i < pIfList->dwNumberOfItems; i++) {
+				WLAN_INTERFACE_INFO *pIfInfo = &pIfList->InterfaceInfo[i];
+
+				if (pIfInfo->isState == wlan_interface_state_connected) {
+					isConnected = true;
+					this->interfaceGuid = pIfInfo->InterfaceGuid;
+
+					DWORD connectSize = 0;
+					PWLAN_CONNECTION_ATTRIBUTES pConnectInfo = NULL;
+					WLAN_OPCODE_VALUE_TYPE opType = wlan_opcode_value_type_invalid;
+
+					if (WlanQueryInterface(hClient, &pIfInfo->InterfaceGuid, wlan_intf_opcode_current_connection, NULL, &connectSize, (PVOID *)&pConnectInfo, &opType) == ERROR_SUCCESS) {
+						signalQuality = pConnectInfo->wlanAssociationAttributes.wlanSignalQuality;
+						WlanFreeMemory(pConnectInfo);
+					}
+					break;
+				}
 			}
 			WlanFreeMemory(pIfList);
 		}

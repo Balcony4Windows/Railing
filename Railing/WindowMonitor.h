@@ -1,5 +1,7 @@
 #pragma once
 #include <Windows.h>
+#include <ShObjIdl.h>
+#include <ShlGuid.h>
 #include <vector>
 #include <string>
 #include <Types.h>
@@ -28,4 +30,24 @@ public:
 	/// <param name="hwnd">Handle to executable window.</param>
 	/// <returns>Executable path if exists, else ""</returns>
 	static std::wstring GetWindowExePath(HWND hwnd);
+
+	static inline std::wstring ResolveShortcut(const std::wstring &path) {
+		if (path.length() < 4 || path.substr(path.length() - 4) != L".lnk")
+			return path;
+
+		std::wstring result = path;
+		IShellLink *psl;
+		if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLink, (LPVOID *)&psl))) {
+			IPersistFile *ppf;
+			if (SUCCEEDED(psl->QueryInterface(IID_IPersistFile, (LPVOID *)&ppf))) {
+				if (SUCCEEDED(ppf->Load(path.c_str(), STGM_READ))) {
+					wchar_t target[MAX_PATH];
+					if (SUCCEEDED(psl->GetPath(target, MAX_PATH, NULL, 0))) result = target;
+				}
+				ppf->Release();
+			}
+			psl->Release();
+		}
+		return result;
+	}
 };

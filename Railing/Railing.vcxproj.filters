@@ -152,6 +152,15 @@
     <ClInclude Include="InputManager.h">
       <Filter>App</Filter>
     </ClInclude>
+    <ClInclude Include="PinnedAppsIO.h">
+      <Filter>Services</Filter>
+    </ClInclude>
+    <ClInclude Include="DropTarget.h">
+      <Filter>Services</Filter>
+    </ClInclude>
+    <ClInclude Include="TrayBackend.h">
+      <Filter>Services</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">

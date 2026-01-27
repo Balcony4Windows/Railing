@@ -9,28 +9,38 @@
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
 
-// Helper to convert HICON to D2D Bitmap
 ID2D1Bitmap *CreateBitmapFromIcon(ID2D1RenderTarget *rt, IWICImagingFactory *pWIC, HICON hIcon) {
     if (!hIcon || !rt || !pWIC) return nullptr;
 
     ID2D1Bitmap *d2dBitmap = nullptr;
     IWICBitmap *wicBitmap = nullptr;
 
-    if (SUCCEEDED(pWIC->CreateBitmapFromHICON(hIcon, &wicBitmap))) {
-        IWICFormatConverter *converter = nullptr;
-        pWIC->CreateFormatConverter(&converter);
-        if (converter) {
-            converter->Initialize(wicBitmap, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+    HRESULT hr = pWIC->CreateBitmapFromHICON(hIcon, &wicBitmap);
+    if (FAILED(hr)) return nullptr;
+
+    // Convert to PBGRA
+    IWICFormatConverter *converter = nullptr;
+    hr = pWIC->CreateFormatConverter(&converter);
+    if (SUCCEEDED(hr) && converter) {
+        hr = converter->Initialize(
+            wicBitmap,
+            GUID_WICPixelFormat32bppPBGRA,
+            WICBitmapDitherTypeNone,
+            NULL, 0.f,
+            WICBitmapPaletteTypeMedianCut
+        );
+        if (SUCCEEDED(hr)) {
             rt->CreateBitmapFromWicBitmap(converter, &d2dBitmap);
-            converter->Release();
         }
-        wicBitmap->Release();
+        converter->Release();
     }
+    wicBitmap->Release();
     return d2dBitmap;
 }
 
-TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, const ThemeConfig &config)
-    : pFactory(sharedFactory), pWICFactory(sharedWIC) {
+TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config)
+    : pFactory(sharedFactory), pWICFactory(sharedWIC), tooltips(tooltips) {
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     this->style = config.global;
 
     WNDCLASS wc = {};
@@ -66,6 +76,7 @@ TrayFlyout::~TrayFlyout() {
 
     for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
     cachedBitmaps.clear();
+    CoUninitialize();
 }
 
 void TrayFlyout::Toggle(RECT iconRect) {
@@ -86,34 +97,44 @@ void TrayFlyout::Toggle(RECT iconRect) {
         }
     }
     else {
-        currentIcons.clear();
-        for (int i = 0; i < 9; i++) {
-            TrayIconData dummy;
-            dummy.hIcon = LoadIcon(NULL, IDI_APPLICATION); // In real app, LoadIconMetric or similar
-            currentIcons.push_back(dummy);
+        // Fetch Data
+        currentIcons = TrayBackend::Get().GetIcons();
+
+        // --- LAYOUT CONFIG ---
+        layoutIconSize = 24.0f; // Reset to standard size
+        layoutPadding = 10.0f;
+
+        // Dynamic Columns
+        if (currentIcons.size() <= 4) layoutCols = max(1, (int)currentIcons.size());
+        else if (currentIcons.size() <= 9) layoutCols = 3;
+        else layoutCols = 4;
+
+        int rows = 1;
+        if (!currentIcons.empty()) {
+            rows = (int)std::ceil((float)currentIcons.size() / (float)layoutCols);
         }
 
-        for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-        cachedBitmaps.clear();
+        int iconPx = (int)layoutIconSize;
+        int padPx = (int)layoutPadding;
 
-        int iconSize = 24;
-        int padding = 10;
-        int cols = 3;
-        int rows = (!currentIcons.empty()) ? (int)std::ceil((float)currentIcons.size() / cols) : 1;
-        int width = (cols * iconSize) + ((cols + 1) * padding);
-        int height = (rows * iconSize) + ((rows + 1) * padding);
+        int width = (layoutCols * iconPx) + ((layoutCols + 1) * padPx);
 
+        // FIX: Add extra buffer to height to prevent rounded corners from clipping icons
+        int height = (rows * iconPx) + ((rows + 1) * padPx) + 12;
+
+        // Positioning
         HMONITOR hMonitor = MonitorFromRect(&iconRect, MONITOR_DEFAULTTONEAREST);
         MONITORINFO mi = { sizeof(mi) };
         GetMonitorInfo(hMonitor, &mi);
 
         int gap = 12;
         targetX = iconRect.left + ((iconRect.right - iconRect.left) / 2) - (width / 2);
+
         if (targetX < mi.rcWork.left + gap) targetX = mi.rcWork.left + gap;
         if (targetX + width > mi.rcWork.right - gap) targetX = mi.rcWork.right - width - gap;
 
-        targetY = iconRect.top - height - gap; // Default to above
-        if (targetY < mi.rcWork.top) targetY = iconRect.bottom + gap; // Flip if not enough space
+        targetY = iconRect.top - height - gap;
+        if (targetY < mi.rcWork.top) targetY = iconRect.bottom + gap;
 
         animState = AnimationState::Entering;
         currentAlpha = 0.0f;
@@ -121,15 +142,11 @@ void TrayFlyout::Toggle(RECT iconRect) {
         lastAnimTime = now;
 
         int r = (int)style.radius;
-        HRGN hRgn = (r > 0) ? CreateRoundRectRgn(0, 0, width, height, r * 2, r * 2) : CreateRectRgn(0, 0, width, height);
+        // Make the region slightly larger than content to be safe
+        HRGN hRgn = (r > 0) ? CreateRoundRectRgn(0, 0, width + 1, height + 1, r * 2, r * 2) : CreateRectRgn(0, 0, width, height);
         SetWindowRgn(hwnd, hRgn, TRUE);
 
-        if (style.animation.enabled) {
-            animState = AnimationState::Entering;
-            currentAlpha = 0.0f;
-            currentOffset = 20.0f;
-        }
-        else {
+        if (!style.animation.enabled) {
             animState = AnimationState::Visible;
             currentAlpha = 1.0f;
             currentOffset = 0.0f;
@@ -140,7 +157,6 @@ void TrayFlyout::Toggle(RECT iconRect) {
         InvalidateRect(hwnd, NULL, FALSE);
     }
 }
-
 void TrayFlyout::UpdateAnimation() {
     if (!style.animation.enabled || animState == AnimationState::Visible || animState == AnimationState::Hidden) return;
 
@@ -203,6 +219,12 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
         EndPaint(hwnd, &ps);
         return 0;
     }
+    case WM_MOUSEMOVE:
+        if (self) self->OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        return 0;
+    case WM_MOUSELEAVE:
+        if (self) self->OnMouseLeave();
+        return 0;
     case WM_LBUTTONUP:
         if (self) self->OnClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), false);
         return 0;
@@ -232,15 +254,77 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-void TrayFlyout::UpdateBitmapCache() {
-    for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-    cachedBitmaps.clear();
+void TrayFlyout::OnMouseMove(int x, int y) {
+    TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT) };
+    tme.dwFlags = TME_LEAVE;
+    tme.hwndTrack = hwnd;
+    TrackMouseEvent(&tme);
 
-    for (const auto &icon : currentIcons) {
-        if (icon.hIcon) {
-            cachedBitmaps.push_back(CreateBitmapFromIcon(pRenderTarget, pWICFactory, icon.hIcon));
+    int newHoveredIndex = -1;
+    int col = 0;
+    int row = 0;
+
+    for (size_t i = 0; i < currentIcons.size(); i++) {
+        // Calculate rect the same way as in Draw()
+        float iconX = layoutPadding + (col * (layoutIconSize + layoutPadding));
+        float iconY = layoutPadding + (row * (layoutIconSize + layoutPadding));
+
+        if (x >= iconX && x <= iconX + layoutIconSize &&
+            y >= iconY && y <= iconY + layoutIconSize) {
+            newHoveredIndex = (int)i;
+            break;
         }
-        else cachedBitmaps.push_back(nullptr);
+
+        col++;
+        if (col >= layoutCols) { col = 0; row++; }
+    }
+
+    if (newHoveredIndex != hoveredIconIndex) {
+        hoveredIconIndex = newHoveredIndex;
+
+        if (hoveredIconIndex >= 0 && tooltips) {
+            const TrayIconData &icon = currentIcons[hoveredIconIndex];
+
+            // Recalculate rect for tooltip
+            int col = hoveredIconIndex % layoutCols;
+            int row = hoveredIconIndex / layoutCols;
+            float iconX = layoutPadding + (col * (layoutIconSize + layoutPadding));
+            float iconY = layoutPadding + (row * (layoutIconSize + layoutPadding));
+
+            POINT topLeft = { (LONG)iconX, (LONG)iconY };
+            POINT bottomRight = { (LONG)(iconX + layoutIconSize), (LONG)(iconY + layoutIconSize) };
+            ClientToScreen(hwnd, &topLeft);
+            ClientToScreen(hwnd, &bottomRight);
+            RECT screenRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y + 20 };
+
+            std::string position = "bottom";
+            tooltips->Show(icon.tooltip, screenRect, position, 1.0f);
+        }
+        else if (tooltips) {
+            tooltips->Hide();
+        }
+
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+}
+
+void TrayFlyout::OnMouseLeave() {
+    hoveredIconIndex = -1;
+    if (tooltips) tooltips->Hide();
+    InvalidateRect(hwnd, NULL, FALSE);
+}
+
+void TrayFlyout::UpdateBitmapCache() {
+    if (cachedBitmaps.size() != currentIcons.size()) {
+        for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
+        cachedBitmaps.clear();
+        cachedBitmaps.resize(currentIcons.size(), nullptr);
+    }
+
+    for (size_t i = 0; i < currentIcons.size(); i++) {
+        if (cachedBitmaps[i] == nullptr && currentIcons[i].hIcon) {
+            cachedBitmaps[i] = CreateBitmapFromIcon(pRenderTarget, pWICFactory, currentIcons[i].hIcon);
+        }
     }
 }
 
@@ -298,31 +382,35 @@ void TrayFlyout::Draw() {
             pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(borderRect, r, r), pBorderBrush, style.borderWidth);
         }
 
-        float padding = 10.0f;
-        float iconSize = 24.0f;
-        int cols = 3;
         int col = 0;
         int row = 0;
 
         for (size_t i = 0; i < currentIcons.size(); i++) {
-            float x = padding + (col * (iconSize + padding));
-            float y = padding + (row * (iconSize + padding));
+            float x = layoutPadding + (col * (layoutIconSize + layoutPadding));
+            float y = layoutPadding + (row * (layoutIconSize + layoutPadding));
 
-            D2D1_RECT_F iconDest = D2D1::RectF(x, y, x + iconSize, y + iconSize);
-            currentIcons[i].rect = { (LONG)x, (LONG)y, (LONG)(x + iconSize), (LONG)(y + iconSize) };
-            // Hover
-            POINT pt; GetCursorPos(&pt);
-            ScreenToClient(hwnd, &pt);
-            if (pt.x >= x && pt.x <= x + iconSize && pt.y >= y && pt.y <= y + iconSize) {
-                pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x - 2, y - 2, x + iconSize + 2, y + iconSize + 2), 4, 4), pHoverBrush);
+            D2D1_RECT_F iconDest = D2D1::RectF(x, y, x + layoutIconSize, y + layoutIconSize);
+            currentIcons[i].rect = { (LONG)x, (LONG)y, (LONG)(x + layoutIconSize), (LONG)(y + layoutIconSize) };
+
+            // Hover - use hoveredIconIndex instead of recalculating
+            if ((int)i == hoveredIconIndex) {
+                pRenderTarget->FillRoundedRectangle(
+                    D2D1::RoundedRect(D2D1::RectF(x - 2, y - 2, x + layoutIconSize + 2, y + layoutIconSize + 2), 6, 6),
+                    pHoverBrush
+                );
             }
+
             // Icon
             if (i < cachedBitmaps.size() && cachedBitmaps[i]) {
                 pRenderTarget->DrawBitmap(cachedBitmaps[i], iconDest, currentAlpha);
             }
+            else {
+                pBgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f * currentAlpha));
+                pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(iconDest, 2, 2), pBgBrush);
+            }
 
             col++;
-            if (col >= cols) { col = 0; row++; }
+            if (col >= layoutCols) { col = 0; row++; }
         }
     }
     pRenderTarget->EndDraw();
@@ -332,6 +420,11 @@ void TrayFlyout::OnClick(int x, int y, bool isRightClick) {
     for (const auto &icon : currentIcons) {
         if (x >= icon.rect.left && x <= icon.rect.right &&
             y >= icon.rect.top && y <= icon.rect.bottom) {
+
+            // 1. Send the actual click event to the app
+            TrayBackend::Get().SendClick(icon, isRightClick);
+
+            // 2. Close the flyout
             if (style.animation.enabled) {
                 animState = AnimationState::Exiting;
                 lastAnimTime = GetTickCount64();

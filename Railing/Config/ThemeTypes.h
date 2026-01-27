@@ -5,7 +5,6 @@
 #include <d2d1.h>
 #include <d2d1_1.h>
 #include <nlohmann/json.hpp>
-#include "Types.h"
 
 struct Padding {
     float top = 0, right = 0, bottom = 0, left = 0;
@@ -67,6 +66,7 @@ struct Threshold {
 // Used in VisualizerModule:
 struct VisualizerSettings {
     int numBars = 32; // Number of bars to display
+    float thickness = 6.0f; // Thickness per bar
     float sensitivity = 4.0f; // Multiplier (Gain)
     float decay = 0.05f; // Fall speed (Gravity)
     int offset = 2; // Bins to skip (Low frequency rumble)
@@ -116,6 +116,7 @@ struct ThemeConfig {
         Padding margin;
         std::string font = "Segoe UI";
         std::string monitor = "primary";
+        D2D1_COLOR_F highlights = D2D1::ColorF(D2D1::ColorF::Crimson);
         bool autoHide = false;
         int autoHideDelay = 500;
         float fontSize = 14.0f;

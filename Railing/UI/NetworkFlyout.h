@@ -13,6 +13,8 @@ public:
 	HWND hwnd = NULL;
     HINSTANCE hInst;
 
+    bool IsVisible() { return IsWindowVisible(hwnd); }
+
 	NetworkBackend backend;
 	std::vector<WifiNetwork> cachedNetworks;
 	ThemeConfig &theme;
@@ -21,6 +23,7 @@ public:
     AnimationState animState = AnimationState::Hidden;
 
     static ULONGLONG lastAutoCloseTime;
+    ULONGLONG lastScanTime = 0;
     RECT currentAnchor = { 0 };
 
     // Shared Resources (I DO NOT OWN THESE - DO NOT RELEASE)
@@ -43,6 +46,7 @@ public:
     std::wstring statusMessage;
     D2D1_COLOR_F statusColor = D2D1::ColorF(1, 1, 1, 1);
     bool isWorking = false;
+    bool isScanning = false;
 
     int hoveredIndex = -1;
     float scrollOffset = 0.0f;

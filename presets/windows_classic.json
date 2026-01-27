@@ -176,7 +176,9 @@
     "type": "tray"
   },
   "weather": {
-    "format": "{icon} {temp}°",
+    "format": "{icon} {temp}°F",
+    "latitude": "40.0",
+    "longitude": "-83.0",
     "on_click": "search:Weather Near Me",
     "style": {
       "fg": "#FFFFFFFF",
@@ -189,17 +191,15 @@
     "update_interval": 300
   },
   "wifi": {
-    "format": "📶",
-    "on_click": "shell:ms-settings:network-wifi",
     "style": {
       "fg": "#FFFFFFFF",
       "padding": [
         0,
         4
-      ]
+      ],
+      "margin": [0, 0, 4, 0]
     },
-    "target": "8.8.8.8",
-    "type": "ping"
+    "type": "network"
   },
   "workspaces": {
     "count": 3,

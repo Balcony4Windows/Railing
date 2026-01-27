@@ -158,6 +158,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="Config\ThemeLoader.h" />
     <ClInclude Include="Config\ThemeTypes.h" />
     <ClInclude Include="Config\Types.h" />
+    <ClInclude Include="DropTarget.h" />
     <ClInclude Include="External\nlohmann\json.hpp" />
     <ClInclude Include="InputManager.h" />
     <ClInclude Include="Modules\Base\Module.h" />
@@ -176,6 +177,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="Modules\Items\VisualizerModule.h" />
     <ClInclude Include="Modules\Items\WeatherModule.h" />
     <ClInclude Include="Modules\Items\WorkspacesModule.h" />
+    <ClInclude Include="PinnedAppsIO.h" />
     <ClInclude Include="Renderer\RailingRenderer.h" />
     <ClInclude Include="Renderer\RenderContext.h" />
     <ClInclude Include="resource.h" />
@@ -186,6 +188,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="Services\NetworkBackend.h" />
     <ClInclude Include="Services\SimpleFFT.h" />
     <ClInclude Include="Services\SystemStats.h" />
+    <ClInclude Include="TrayBackend.h" />
     <ClInclude Include="UI\NetworkFlyout.h" />
     <ClInclude Include="UI\TooltipHandler.h" />
     <ClInclude Include="UI\TrayFlyout.h" />

@@ -10,11 +10,15 @@
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
 
+const float LOGICAL_WIDTH = 320.0f;
+const float LOGICAL_COMPACT_HEIGHT = 200.0f;
+const float LOGICAL_FULL_HEIGHT = 340.0f;
+
 ULONGLONG VolumeFlyout::lastAutoCloseTime = 0;
 ULONGLONG VolumeFlyout::lastAnimTime = 0;
 
-VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, const ThemeConfig &config)
-    : hInst(hInst), pFactory(pSharedFactory), pWriteFactory(pSharedWriteFactory)
+VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config)
+    : hInst(hInst), pFactory(pSharedFactory), pWriteFactory(pSharedWriteFactory), pTextFormat(pFormat)
 {
     this->style = config.global;
     WNDCLASS wc = { 0 };
@@ -25,21 +29,6 @@ VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWrit
         wc.hCursor = LoadCursor(NULL, IDC_ARROW);
         RegisterClass(&wc);
     }
-    if (pWriteFactory && !pTextFormat) {
-        std::wstring fontName = std::wstring(style.font.begin(), style.font.end());
-        if (fontName.empty()) fontName = L"Segoe UI";
-
-        pWriteFactory->CreateTextFormat(
-            fontName.c_str(),
-            NULL,
-            DWRITE_FONT_WEIGHT_NORMAL,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            14.0f,
-            L"en-us",
-            &pTextFormat
-        );
-    }
 }
 
 VolumeFlyout::~VolumeFlyout() {
@@ -49,19 +38,20 @@ void VolumeFlyout::PositionWindow(RECT iconRect) {
     if (!hwnd) return;
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;
-    int flyWidth = (int)(300 * scale);
-    int flyHeight = (int)(180 * scale);
+
+    int flyWidth = (int)(LOGICAL_WIDTH * scale);
+    int flyHeight = (int)(LOGICAL_FULL_HEIGHT * scale);
+
     HMONITOR hMonitor = MonitorFromRect(&iconRect, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi = { sizeof(MONITORINFO) };
     GetMonitorInfo(hMonitor, &mi);
 
     int gap = (int)(12 * scale);
+
     this->targetX = iconRect.left + ((iconRect.right - iconRect.left) / 2) - (flyWidth / 2);
     this->targetY = iconRect.top - flyHeight - gap;
 
-    if (this->targetY < mi.rcWork.top) { // flip if touching top
-        this->targetY = iconRect.bottom + gap;
-    }
+    if (this->targetY < mi.rcWork.top) this->targetY = iconRect.bottom + gap;
     if (this->targetX < mi.rcWork.left + gap) this->targetX = mi.rcWork.left + gap;
     if (this->targetX + flyWidth > mi.rcWork.right - gap) this->targetX = mi.rcWork.right - flyWidth - gap;
 }
@@ -113,8 +103,8 @@ void VolumeFlyout::Toggle(RECT iconRect) {
 
         float dpi = (float)GetDpiForWindow(hwnd);
         float scale = dpi / 96.0f;
-        int w = (int)(300 * scale);
-        int h = (int)(180 * scale);
+        int w = (int)(LOGICAL_WIDTH * scale);
+        int h = (int)(LOGICAL_FULL_HEIGHT * scale);
         int r = (int)style.radius;
         HRGN hRgn = (r > 0) ? CreateRoundRectRgn(0, 0, w, h, r * 2, r * 2) : CreateRectRgn(0, 0, w, h);
         SetWindowRgn(hwnd, hRgn, TRUE);
@@ -172,15 +162,17 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
 
-            if (wParam & MK_LBUTTON) {
-                self->OnDrag(x, y);
-            }
+            if (wParam & MK_LBUTTON) self->OnDrag(x, y);
+
+            float dpi = (float)GetDpiForWindow(hwnd);
+            float scale = dpi / 96.0f;
+            float lx = x / scale;
+            float ly = y / scale;
 
             // Hover Logic
             D2D1_RECT_F hitRect = self->sliderRect;
             hitRect.top -= 10; hitRect.bottom += 10;
-            bool hovering = (x >= hitRect.left && x <= hitRect.right && y >= hitRect.top && y <= hitRect.bottom);
-
+            bool hovering = (lx >= hitRect.left && lx <= hitRect.right && ly >= hitRect.top && ly <= hitRect.bottom);
             if (hovering != self->isHoveringSlider) {
                 self->isHoveringSlider = hovering;
                 InvalidateRect(hwnd, NULL, FALSE);
@@ -196,21 +188,25 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
                 POINT pt;
                 GetCursorPos(&pt);
                 ScreenToClient(hwnd, &pt);
+                float dpi = (float)GetDpiForWindow(hwnd);
+                float scale = dpi / 96.0f;
+                float lx = pt.x / scale;
+                float ly = pt.y / scale;
                 bool showHand = false;
-                if (pt.x >= self->sliderRect.left - 10 && pt.x <= self->sliderRect.right + 10 &&
-                    pt.y >= self->sliderRect.top - 15 && pt.y <= self->sliderRect.bottom + 15) {
+                if (lx >= self->sliderRect.left - 10 && lx <= self->sliderRect.right + 10 &&
+                    ly >= self->sliderRect.top - 15 && ly <= self->sliderRect.bottom + 15) {
                     showHand = true;
                 }
-                else if (pt.x >= self->switchRect.left && pt.x <= self->switchRect.right &&
-                    pt.y >= self->switchRect.top && pt.y <= self->switchRect.bottom) {
+                else if (lx >= self->switchRect.left && lx <= self->switchRect.right &&
+                    ly >= self->switchRect.top && ly <= self->switchRect.bottom) {
                     if (!self->isHoveringOpenButton) {
                         self->isHoveringOpenButton = true;
                         InvalidateRect(hwnd, NULL, FALSE);
                     }
                     showHand = true;
                 }
-                else if (pt.x >= self->dropdownRect.left && pt.x <= self->dropdownRect.right &&
-                    pt.y >= self->dropdownRect.top && pt.y <= self->dropdownRect.bottom) {
+                else if (lx >= self->dropdownRect.left && lx <= self->dropdownRect.right &&
+                    ly >= self->dropdownRect.top && ly <= self->dropdownRect.bottom) {
                     showHand = true;
                 }
 
@@ -220,13 +216,13 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
                 }
 
                 if (!showHand && self->isDropdownOpen) {
-                    if (pt.x >= self->scrollTrackRect.left - 5 && pt.x <= self->scrollTrackRect.right + 5 &&
-                        pt.y >= self->scrollTrackRect.top && pt.y <= self->scrollTrackRect.bottom) {
+                    if (lx >= self->scrollTrackRect.left - 5 && lx <= self->scrollTrackRect.right + 5 &&
+                        ly >= self->scrollTrackRect.top && ly <= self->scrollTrackRect.bottom) {
                         showHand = true;
                     }
                     if (!showHand) {
                         for (const auto &r : self->deviceItemRects) {
-                            if (pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom) {
+                            if (lx >= r.left && lx <= r.right && ly >= r.top && ly <= r.bottom) {
                                 showHand = true;
                                 break;
                             }
@@ -300,7 +296,6 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             if (self->pAccentBrush) { self->pAccentBrush->Release();  self->pAccentBrush = nullptr; }
             if (self->pFgBrush) { self->pFgBrush->Release();      self->pFgBrush = nullptr; }
             if (self->pBorderBrush) { self->pBorderBrush->Release();  self->pBorderBrush = nullptr; }
-            if (self->pTextFormat) { self->pTextFormat->Release();   self->pTextFormat = nullptr; }
             self->hwnd = nullptr; // Mark as closed
             if (Railing::instance && Railing::instance->flyout == self) {
                 Railing::instance->flyout = nullptr;
@@ -315,7 +310,6 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
-
 void VolumeFlyout::Draw() {
     UpdateAnimation();
     if (animState == AnimationState::Hidden) return;
@@ -323,6 +317,7 @@ void VolumeFlyout::Draw() {
     RECT rc; GetClientRect(hwnd, &rc);
     D2D1_SIZE_U size = D2D1::SizeU(rc.right, rc.bottom);
 
+    // Ensure Render Target exists (Keep your existing creation logic)
     if (!pRenderTarget) {
         D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
             D2D1_RENDER_TARGET_TYPE_DEFAULT,
@@ -332,7 +327,8 @@ void VolumeFlyout::Draw() {
         if (SUCCEEDED(hr) && pRenderTarget) {
             pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &pBgBrush);
             pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pFgBrush);
-            pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::CornflowerBlue), &pAccentBrush);
+            D2D1_COLOR_F highlightCol = style.highlights;
+            pRenderTarget->CreateSolidColorBrush(highlightCol, &pAccentBrush);
             pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &pBorderBrush);
         }
         else return;
@@ -341,48 +337,74 @@ void VolumeFlyout::Draw() {
         D2D1_SIZE_U curSize = pRenderTarget->GetPixelSize();
         if (curSize.width != size.width || curSize.height != size.height) pRenderTarget->Resize(size);
     }
+
     pRenderTarget->BeginDraw();
     pRenderTarget->Clear(D2D1::ColorF(0, 0, 0, 0));
 
     if (pBgBrush && pFgBrush && pAccentBrush && pBorderBrush && pTextFormat) {
-        pRenderTarget->SetTransform(D2D1::Matrix3x2F::Translation(0, currentOffset));
+        // FIX 1: Apply Scaling (Match NetworkFlyout)
+        float dpi = (float)GetDpiForWindow(hwnd);
+        float scale = dpi / 96.0f;
+        pRenderTarget->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale));
+
+        // FIX 2: Use Logical Width (300) so layout stays consistent
+        float width = LOGICAL_WIDTH;
+        float visualHeight = LOGICAL_FULL_HEIGHT;
+
+        // Setup Text Format (Left Aligned by default)
+        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+        pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+        // --- Background ---
         D2D1_COLOR_F bgColor = style.background;
         bgColor.a *= currentAlpha;
-        pBgBrush->SetColor(bgColor);
+        if (bgColor.a == 0.0f) bgColor = D2D1::ColorF(0.08f, 0.08f, 0.1f, 0.6f * currentAlpha);
 
-        D2D1_RECT_F bgRect = D2D1::RectF(0, 0, (float)rc.right, (float)rc.bottom);
+        pBgBrush->SetColor(bgColor);
+        D2D1_RECT_F bgRect = D2D1::RectF(0, 0, width, visualHeight); // Logical Size
         float r = style.radius;
+
         if (bgColor.a > 0.0f) pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(bgRect, r, r), pBgBrush);
+
         if (style.borderWidth > 0.0f) {
             D2D1_COLOR_F bColor = style.borderColor;
-            if (bColor.a == 0.0f) bColor.a = 1.0f; // Fix invisible border
+            if (bColor.a == 0.0f) bColor.a = 1.0f;
             bColor.a *= currentAlpha;
-            if (bColor.a > 0.0f) {
-                pBorderBrush->SetColor(bColor);
-                float inset = style.borderWidth / 2.0f;
-                D2D1_RECT_F bRect = D2D1::RectF(inset, inset, rc.right - inset, rc.bottom - inset);
-                pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(bRect, r, r), pBorderBrush, style.borderWidth);
-            }
+            pBorderBrush->SetColor(bColor);
+            float inset = style.borderWidth / 2.0f;
+            D2D1_RECT_F bRect = D2D1::RectF(inset, inset, width - inset, visualHeight - inset);
+            pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(bRect, r, r), pBorderBrush, style.borderWidth);
         }
-        pFgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f * currentAlpha));
-        pAccentBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 1.0f * currentAlpha));
-        float width = pRenderTarget->GetSize().width;
+
+        // --- Content Layout ---
         float padding = 20.0f;
         float y = 20.0f;
 
         float vol = isDraggingSlider ? cachedVolume : audio.GetVolume();
         if (!isDraggingSlider) cachedVolume = vol;
 
+        // Title
+        pFgBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f * currentAlpha));
+        pRenderTarget->DrawTextW(L"Volume", 6, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
+
+        // Slider Track
         pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f * currentAlpha));
-        sliderRect = D2D1::RectF(padding, y + 30, width - padding, y + 26);
+        // FIX 3: Fixed Slider Rect coordinates (Top was > Bottom in your code)
+        sliderRect = D2D1::RectF(padding, y + 30, width - padding, y + 36);
         pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(sliderRect, 3, 3), pBgBrush);
 
+        // Slider Fill
         D2D1_RECT_F fillRect = sliderRect;
+        D2D1_COLOR_F highlightCol = style.highlights;
+        highlightCol.a *= currentAlpha * 1.0f;
         fillRect.right = fillRect.left + (fillRect.right - fillRect.left) * vol;
+        pAccentBrush->SetColor(highlightCol);
         pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(fillRect, 3, 3), pAccentBrush);
 
+        // Slider Thumb
         pRenderTarget->FillEllipse(D2D1::Ellipse(D2D1::Point2F(fillRect.right, (sliderRect.top + sliderRect.bottom) / 2), 8, 8), pFgBrush);
 
+        // Slider Tooltip (Dragging)
         if (isDraggingSlider || isHoveringSlider) {
             float thumbX = fillRect.right;
             D2D1_RECT_F tipRect = D2D1::RectF(thumbX - 19, sliderRect.top - 28, thumbX + 19, sliderRect.top - 6);
@@ -395,81 +417,102 @@ void VolumeFlyout::Draw() {
             wchar_t volText[8];
             swprintf_s(volText, L"%d%%", (int)(vol * 100));
 
+            pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER); // Center text in tooltip
             pFgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f));
             pRenderTarget->DrawTextW(volText, (UINT32)wcslen(volText), pTextFormat,
                 D2D1::RectF(tipRect.left, tipRect.top - 1, tipRect.right, tipRect.bottom),
                 pFgBrush);
+            pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING); // Restore
         }
+
+        y += 60.0f; // Move down
+
+        // Sound Settings
         pFgBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f * currentAlpha));
-        pRenderTarget->DrawTextW(L"Volume", 6, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
-
-        y += 60.0f;
-
         pRenderTarget->DrawTextW(L"Sound Settings", 14, pTextFormat, D2D1::RectF(padding, y, width, y + 20), pFgBrush);
+
+        // Open Button
         switchRect = D2D1::RectF(width - padding - 80, y, width - padding, y + 26);
-
         float btnAlpha = isHoveringOpenButton ? 0.8f : 0.5f;
-        pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, btnAlpha * currentAlpha));
+        pBgBrush->SetColor(highlightCol);
         pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(switchRect, 4, 4), pBgBrush);
-        pRenderTarget->DrawTextW(L"Open", 4, pTextFormat, D2D1::RectF(switchRect.left + 22, switchRect.top + 3, switchRect.right, switchRect.bottom), pFgBrush);
 
-        y += 50.0f;
+        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+        pRenderTarget->DrawTextW(L"Open", 4, pTextFormat, D2D1::RectF(switchRect.left, switchRect.top + 1, switchRect.right, switchRect.bottom), pFgBrush);
+        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+
+        y += 50.0f; // Move down
 
         // DEVICE DROPDOWN
         dropdownRect = D2D1::RectF(padding, y, width - padding, y + 30);
         pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.15f * currentAlpha));
         pRenderTarget->FillRectangle(dropdownRect, pBgBrush);
+
         std::wstring currentName = audio.GetCurrentDeviceName();
+        // Limit text width to avoid overlapping arrow
         pRenderTarget->DrawTextW(currentName.c_str(), (UINT32)currentName.length(), pTextFormat, D2D1::RectF(padding + 10, y + 5, width - 40, y + 30), pFgBrush);
-        pRenderTarget->DrawTextW(isDropdownOpen ? L"\u2B0E" : L"\u2B0F", 1, pTextFormat, D2D1::RectF(width - padding - 25, y + 5, width, y + 30), pFgBrush);
 
-        // Draw arrow
-        pRenderTarget->DrawTextW(isDropdownOpen ? L"\u2B0E" : L"\u2B0F", 1, pTextFormat,
-            D2D1::RectF(width - padding - 25, y + 5, width, y + 30), pFgBrush);
+        // Arrow
+        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
+        pRenderTarget->DrawTextW(isDropdownOpen ? L"\u2B0E" : L"\u2B0F", 1, pTextFormat, D2D1::RectF(width - padding - 35, y + 5, width - padding - 10, y + 30), pFgBrush);
+        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
 
+        // Dropdown List
         if (isDropdownOpen) {
             y += 35.0f;
             deviceItemRects.clear();
-            int visibleCount = min((int)devices.size(), 3);
-            float clipHeight = visibleCount * 35.0f;
-            D2D1_RECT_F clipRect = D2D1::RectF(0, y, width, y + clipHeight);
+            float availableHeight = LOGICAL_FULL_HEIGHT - y - 10.0f;
+
+            // Adjust clip rect for scale logic
+            D2D1_RECT_F clipRect = D2D1::RectF(0, y, width, y + availableHeight);
+
             float totalContentHeight = (float)devices.size() * 35.0f;
-            maxScroll = max(0.0f, totalContentHeight - clipHeight);
+            maxScroll = max(0.0f, totalContentHeight - availableHeight);
+
             pRenderTarget->PushAxisAlignedClip(clipRect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
-            float currentY = y - scrollOffset; // Apply scroll offset
+            float currentY = y - scrollOffset;
 
             for (const auto &dev : devices) {
                 D2D1_RECT_F itemRect = D2D1::RectF(padding, currentY, width - padding, currentY + 30);
                 deviceItemRects.push_back(itemRect);
+
                 if (itemRect.bottom > clipRect.top && itemRect.top < clipRect.bottom) {
-                    if (dev.name == currentName)
-                        pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, 0.4f));
+                    if (dev.name == currentName) {
+                        D2D1_COLOR_F devCol = style.highlights;
+                        devCol.a *= 0.4f;
+                        pBgBrush->SetColor(devCol);
+                    }
                     else
                         pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.05f));
 
                     pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(itemRect, 2, 2), pBgBrush);
                     pRenderTarget->DrawTextW(dev.name.c_str(), (UINT32)dev.name.length(), pTextFormat,
-                        D2D1::RectF(padding + 10, currentY + 5, width, currentY + 30), pFgBrush);
+                        D2D1::RectF(padding + 10, currentY + 5, width - padding - 10, currentY + 30), pFgBrush);
                 }
                 currentY += 35.0f;
             }
 
             pRenderTarget->PopAxisAlignedClip();
+
+            // Scrollbar
             if (maxScroll > 0) {
-                float listHeight = visibleCount * 35.0f;
-                float scrollTrackHeight = listHeight - 10.0f;
-                float scrollThumbHeight = max(20.0f, (listHeight / (devices.size() * 35.0f)) * scrollTrackHeight);
+                float scrollTrackHeight = availableHeight;
+                float scrollThumbHeight = max(20.0f, (availableHeight / totalContentHeight) * scrollTrackHeight);
                 float scrollRatio = scrollOffset / maxScroll;
                 float scrollThumbY = (y + 5.0f) + (scrollRatio * (scrollTrackHeight - scrollThumbHeight));
+
                 scrollTrackRect = D2D1::RectF(width - padding, y + 5.0f, width - padding + 15.0f, y + 5.0f + scrollTrackHeight);
                 scrollThumbRect = D2D1::RectF(width - padding + 5.0f, scrollThumbY, width - padding + 8.0f, scrollThumbY + scrollThumbHeight);
-                POINT pt;
-                GetCursorPos(&pt); // Hover effect
-                ScreenToClient(hwnd, &pt);
-                bool isOverThumb = (pt.x >= scrollThumbRect.left - 5 && pt.x <= scrollThumbRect.right + 5 &&
-                    pt.y >= scrollThumbRect.top && pt.y <= scrollThumbRect.bottom);
+
+                POINT pt; GetCursorPos(&pt); ScreenToClient(hwnd, &pt);
+                // Adjust mouse hit test for scale
+                float lx = pt.x / scale;
+                float ly = pt.y / scale;
+
+                bool isOverThumb = (lx >= scrollThumbRect.left - 5 && lx <= scrollThumbRect.right + 5 && ly >= scrollThumbRect.top && ly <= scrollThumbRect.bottom);
                 float thumbAlpha = (isOverThumb || isDraggingScrollbar) ? 0.6f : 0.3f;
+
                 pBgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, thumbAlpha));
                 pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(scrollThumbRect, 1.5f, 1.5f), pBgBrush);
             }
@@ -482,25 +525,24 @@ void VolumeFlyout::OnClick(int x, int y)
 {
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;
+    float lx = x / scale;
+    float ly = y / scale;
     D2D1_RECT_F hitRect = sliderRect;
     hitRect.left -= 10; hitRect.right += 10; hitRect.top -= 15; hitRect.bottom += 15;
-    if (x >= hitRect.left && x <= hitRect.right && y >= hitRect.top && y <= hitRect.bottom) {
+    if (lx >= hitRect.left && lx <= hitRect.right && ly >= hitRect.top && ly <= hitRect.bottom) {
         isDraggingSlider = true;
         OnDrag(x, y);
         return;
     }
-    if (x >= switchRect.left && x <= switchRect.right && y >= switchRect.top && y <= switchRect.bottom) {
+    else if (lx >= switchRect.left && lx <= switchRect.right && ly >= switchRect.top && ly <= switchRect.bottom) {
         audio.OpenSoundSettings();
         return;
     }
-    if (x >= dropdownRect.left && x <= dropdownRect.right && y >= dropdownRect.top && y <= dropdownRect.bottom) {
+    else if (lx >= dropdownRect.left && lx <= dropdownRect.right && ly >= dropdownRect.top && ly <= dropdownRect.bottom) {
         isDropdownOpen = !isDropdownOpen;
         if (isDropdownOpen) {
             RefreshDevices();
             scrollOffset = 0.0f;
-        }
-        else {
-            SetWindowPos(hwnd, NULL, 0, 0, (int)(300 * scale), (int)(180 * scale), SWP_NOMOVE | SWP_NOZORDER);
         }
         InvalidateRect(hwnd, NULL, FALSE);
         return;
@@ -527,14 +569,14 @@ void VolumeFlyout::OnClick(int x, int y)
     if (isDropdownOpen) {
         float listTop = dropdownRect.bottom + 5.0f;
         RECT rc; GetClientRect(hwnd, &rc);
-        float listBottom = (float)rc.bottom - 10.0f;
+        float listBottom = LOGICAL_FULL_HEIGHT - 10.0f;
         for (size_t i = 0; i < deviceItemRects.size(); ++i) {
             D2D1_RECT_F r = deviceItemRects[i];
-            if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-                if (y >= listTop && y <= listBottom) {
+            if (lx >= r.left && lx <= r.right && ly >= r.top && ly <= r.bottom) {
+                if (ly >= listTop && ly <= listBottom) {
                     audio.SetDefaultDevice(devices[i].id);
                     isDropdownOpen = false;
-                    SetWindowPos(hwnd, NULL, 0, 0, (int)(300 * scale), (int)(180 * scale), SWP_NOMOVE | SWP_NOZORDER);
+                    scrollOffset = 0.0f;
                     InvalidateRect(hwnd, NULL, FALSE);
                     return;
                 }
@@ -544,9 +586,14 @@ void VolumeFlyout::OnClick(int x, int y)
 }
 
 void VolumeFlyout::OnDrag(int x, int y) {
+    float dpi = (float)GetDpiForWindow(hwnd);
+    float scale = dpi / 96.0f;
+    float lx = x / scale;
+    float ly = y / scale;
+
     if (isDraggingSlider) {
         float width = sliderRect.right - sliderRect.left;
-        float localX = (float)x - sliderRect.left;
+        float localX = lx - sliderRect.left;
         if (localX < 0) localX = 0;
         if (localX > width) localX = width;
 

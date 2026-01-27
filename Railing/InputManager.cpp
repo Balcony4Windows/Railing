@@ -4,12 +4,15 @@
 #include <windowsx.h>
 #include "WindowMonitor.h"
 #include "Railing.h"
+#include <cstdlib>
 
 InputManager::InputManager(Railing *a, RailingRenderer *rr, TooltipHandler *t)
 	: app(a), renderer(rr), tooltips(t) { }
 
 void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
 {
+    if (!renderer) return;
+
 	if (!isTrackingMouse) {
 		TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
 		TrackMouseEvent(&tme);
@@ -59,9 +62,19 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
         }
     }
 
-    if (hitModule) { // Tooltip logic
+    if (hitModule) {
+        // 1. Check for Custom Tooltip FIRST
+        if (!hitModule->config.tooltip.empty()) {
+            std::string tip = hitModule->config.tooltip;
+            int size_needed = MultiByteToWideChar(CP_UTF8, 0, &tip[0], (int)tip.size(), NULL, 0);
+            if (size_needed > 0) {
+                std::wstring wstrTo(size_needed, 0);
+                MultiByteToWideChar(CP_UTF8, 0, tip.c_str(), -1, &wstrTo[0], size_needed);
+                newText = (wstrTo != L"null") ? wstrTo : L"";
+            }
+        }
+        else { // Tooltip logic
         std::string type = hitModule->config.type;
-
         if (type == "audio") newText = L"Volume";
         else if (type == "network") newText = L"Network";
         else if (type == "battery") newText = L"Battery";
@@ -96,7 +109,7 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
                 float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
                 float bgWidth = modW - s.margin.left - s.margin.right;
                 float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
-                
+
                 if (localX >= startX && localX <= (startX + totalIconWidth)) {
                     float offset = localX - startX;
                     int index = (int)(offset / (iSize + iSpace));
@@ -105,18 +118,23 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
                         newText = dock->GetTitleAtIndex(index);
                 }
             }
+            }
         }
     }
     if (needsRepaint) InvalidateRect(hwnd, NULL, FALSE);
 
-    if (!newText.empty() && lastTooltipText != newText) {
-        lastTooltipText = newText;
-        RECT logRect = { (LONG)rectF.left, (LONG)rectF.top, (LONG)rectF.right, (LONG)rectF.bottom };
-        tooltips->Show(lastTooltipText.c_str(), logRect, renderer->theme.global.position, scale);
+    if (!newText.empty()) {
+        if (lastTooltipText != newText) {
+            lastTooltipText = newText;
+            RECT logRect = { (LONG)rectF.left, (LONG)rectF.top, (LONG)rectF.right, (LONG)rectF.bottom };
+            tooltips->Show(lastTooltipText.c_str(), logRect, renderer->theme.global.position, scale);
+        }
     }
-    else if (!lastTooltipText.empty()) {
-        tooltips->Hide();
-        lastTooltipText.clear();
+    else {
+        if (!lastTooltipText.empty()) {
+            tooltips->Hide();
+            lastTooltipText.clear();
+        }
     }
 }
 
@@ -128,6 +146,15 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
     std::string type = m->config.type;
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;
+
+    auto GetScreenRect = [&](D2D1_RECT_F logicRect) -> RECT {
+        RECT r = {
+            (LONG)(logicRect.left * scale), (LONG)(logicRect.top * scale),
+            (LONG)(logicRect.right * scale), (LONG)(logicRect.bottom * scale)
+        };
+        MapWindowPoints(hwnd, NULL, (LPPOINT)&r, 2);
+        return r;
+        };
 
     if (type == "workspaces") {
         WorkspacesModule *ws = (WorkspacesModule *)m;
@@ -153,8 +180,8 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
     }
     else if (type == "audio") {
         if (app->flyout) {
-            RECT r = { (LONG)rectF.left, (LONG)rectF.top, (LONG)rectF.right, (LONG)rectF.bottom };
-            app->flyout->Toggle(r);
+            RECT screenRect = GetScreenRect(rectF); // FIX APPLIED
+            app->flyout->Toggle(screenRect);
         }
     }
     else if (type == "network") {
@@ -164,17 +191,17 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
                 renderer->GetTextFormat(), renderer->GetIconFormat(), renderer->theme
             );
         }
-        RECT r = { (LONG)rectF.left, (LONG)rectF.top, (LONG)rectF.right, (LONG)rectF.bottom };
-        app->networkFlyout->Toggle(r);
+        RECT screenRect = GetScreenRect(rectF); // FIX APPLIED
+        app->networkFlyout->Toggle(screenRect);
     }
     else if (type == "tray") {
         if (!app->trayFlyout) {
             app->trayFlyout = new TrayFlyout(
-                app->hInst, renderer->GetFactory(), renderer->GetWICFactory(), renderer->theme
-            );
+                app->hInst, renderer->GetFactory(),
+                renderer->GetWICFactory(), tooltips, renderer->theme);
         }
-        RECT r = { (LONG)rectF.left, (LONG)rectF.top, (LONG)rectF.right, (LONG)rectF.bottom };
-        app->trayFlyout->Toggle(r);
+        RECT screenRect = GetScreenRect(rectF); // FIX APPLIED
+        app->trayFlyout->Toggle(screenRect);
     }
     else if (type == "battery") {
         ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL);
@@ -185,7 +212,7 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
     else if (type == "notification") {
         CommandExecutor::Execute("notification", hwnd);
     }
-    else if (type == "custom" || type == "ping" || type == "weather") {
+    else if (type == "custom" || type == "ping" || type == "weather" || type == "clock") {
         std::string action = m->config.onClick;
         if (!action.empty()) CommandExecutor::Execute(action, hwnd);
     }
@@ -227,7 +254,6 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
                                 InvalidateRect(hwnd, NULL, FALSE);
                             }
                         }
-                        // Toggle Minimize/Restore
                         if (target.hwnd == ::GetForegroundWindow()) {
                             ::ShowWindow(target.hwnd, SW_MINIMIZE);
                         }
@@ -276,10 +302,7 @@ void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING, 100, targetWin.hwnd ? L"Open New Window" : L"Launch");
 
-                bool isPinned = false;
-                for (auto &p : app->pinnedApps) {
-                    if (!p.empty() && p == targetWin.exePath) isPinned = true;
-                }
+                bool isPinned = dock->IsPinned(targetWin.exePath);
                 AppendMenuW(hMenu, MF_STRING, 101, isPinned ? L"Unpin" : L"Pin");
 
                 if (targetWin.hwnd) {
@@ -302,11 +325,11 @@ void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
                     std::wstring path = targetWin.exePath;
                     if (path.empty() && targetWin.hwnd) path = WindowMonitor::GetWindowExePath(targetWin.hwnd);
 
-                    auto it = std::find(app->pinnedApps.begin(), app->pinnedApps.end(), path);
-                    if (it != app->pinnedApps.end()) app->pinnedApps.erase(it);
-                    else app->pinnedApps.push_back(path);
+                    if (!path.empty()) {
+                        if (dock->IsPinned(path)) dock->UnpinApp(path);
+                        else dock->PinApp(path);
+                    }
 
-                    app->SavePinnedApps();
                     WindowMonitor::GetTopLevelWindows(app->allWindows, app->pinnedApps, app->hwndBar);
                     InvalidateRect(hwnd, NULL, FALSE);
                 }
@@ -362,25 +385,51 @@ void InputManager::OnMouseLeave(HWND hwnd)
 
 Module *InputManager::HitTest(int x, int y, D2D1_RECT_F &outRect)
 {
-	float dpi = (float)GetDpiForWindow(app->hwndBar);
-	float scale = dpi / 96.0f;
-	POINT pt = { x, y };
-	
-    // Get Screen Pos of the bar to offset scaling.
-    for (auto const &[id, cfg] : renderer->theme.modules) {
-        D2D1_RECT_F f = renderer->GetModuleRect(id);
-        if (f.right == 0.0f && f.bottom == 0.0f) continue; // skip invisible modules?
+    if (!renderer) return nullptr;
 
-        RECT physRect = {
-            (LONG)(f.left * scale), (LONG)(f.top * scale),
-            (LONG)(f.right * scale), (LONG)(f.bottom * scale)
+    float dpi = (float)GetDpiForWindow(app->hwndBar);
+    float scale = dpi / 96.0f;
+    POINT pt = { x, y };
+
+    // Helper to check a specific list of modules
+    auto CheckList = [&](const std::vector<Module *> &list) -> Module *{
+        for (Module *m : list) {
+            D2D1_RECT_F f = renderer->GetModuleRect(m->config.id);
+            if (f.right == 0.0f && f.bottom == 0.0f) continue;
+
+            RECT physRect = {
+                (LONG)(f.left * scale), (LONG)(f.top * scale),
+                (LONG)(f.right * scale), (LONG)(f.bottom * scale)
+            };
+
+            if (PtInRect(&physRect, pt)) {
+                if (m->config.type == "group") {
+                    GroupModule *g = (GroupModule *)m;
+                    // Check children
+                    for (auto *child : g->children) {
+                        D2D1_RECT_F cf = renderer->GetModuleRect(child->config.id);
+                        RECT cphys = {
+                            (LONG)(cf.left * scale), (LONG)(cf.top * scale),
+                            (LONG)(cf.right * scale), (LONG)(cf.bottom * scale)
+                        };
+                        if (PtInRect(&cphys, pt)) {
+                            outRect = cf;
+                            return child;
+                        }
+                    }
+                }
+                outRect = f;
+                return m;
+            }
+        }
+        return nullptr;
         };
 
-        if (PtInRect(&physRect, pt)) {
-            outRect = f;
-            return renderer->GetModule(id);
-        }
-    }
-    return nullptr;
-}
+    Module *found = CheckList(renderer->leftModules);
+    if (found) return found;
 
+    found = CheckList(renderer->centerModules);
+    if (found) return found;
+
+    return CheckList(renderer->rightModules);
+}

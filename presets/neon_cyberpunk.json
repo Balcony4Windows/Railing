@@ -62,6 +62,7 @@
   },
   "ping": {
     "type": "ping",
+    "on_click": "shell:ms-settings:network-wifi",
     "target": "1.1.1.1",
     "format": "NET:{ping}ms",
     "style": { "fg": "#FFFF00", "padding": [0, 8], "margin": [0, 0, 0, 0] }

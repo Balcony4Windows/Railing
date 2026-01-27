@@ -1,14 +1,12 @@
 #pragma once
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
 #include <winsock2.h>
 #include <Windows.h>
 #include <vector>
-#include <shellapi.h> // For SHAppBarMessage
-#include "resource.h"
-#include "Types.h"
+#include <shellapi.h>
 #include <dwmapi.h>
+#include <Psapi.h>
+#include "Types.h"
+#include "resource.h"
 #include "RailingRenderer.h"
 #include "VolumeFlyout.h"
 #include "TrayFlyout.h"
@@ -16,10 +14,12 @@
 #include "TooltipHandler.h"
 #include "GpuStats.h"
 #include "AppBarRegistration.h"
-#include <Psapi.h>
+#include "DropTarget.h"
 #include "WorkspaceManager.h"
 #include "AudioCapture.h"
 #include "NetworkFlyout.h"
+
+class InputManager;
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)
@@ -46,10 +46,11 @@ public:
 	FILETIME lastConfigWriteTime = { 0 };
 	void CheckForConfigUpdate();
 
+	std::unique_ptr<InputManager> inputManager;
+	IDropTarget *pDropTarget = nullptr;
+
 	bool Initialize(HINSTANCE hInstance);
 	void RunMessageLoop();
-	BOOL IsAppWindow(HWND hwnd);
-	void GetTopLevelWindows(std::vector<WindowInfo> &outWindows);
 
 	std::vector <WindowInfo> allWindows;
 	std::vector<std::wstring> pinnedApps;
@@ -60,8 +61,11 @@ public:
 	NetworkFlyout *networkFlyout;
 	WorkspaceManager workspaces;
 	AudioCapture visualizerBackend;
+	NetworkBackend networkBackend;
 
 	float cachedVolume = 0.0f;
+	int cachedWifiSignal = 0;
+	bool cachedWifiState = false;
 	bool cachedMute = false;
 
 	static std::string ToUtf8(const std::wstring &wstr) {

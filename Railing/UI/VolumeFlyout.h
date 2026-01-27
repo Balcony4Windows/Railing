@@ -14,7 +14,7 @@ struct AudioDeviceInfo {
 
 class VolumeFlyout {
 public:
-    VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, const ThemeConfig &config);
+    VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config);
     ~VolumeFlyout();
     AudioBackend audio;
     HWND hwnd = nullptr;
@@ -44,7 +44,7 @@ private:
     ID2D1SolidColorBrush *pFgBrush = nullptr;
     ID2D1SolidColorBrush *pAccentBrush = nullptr;
     ID2D1SolidColorBrush *pBorderBrush = nullptr;
-    IDWriteTextFormat *pTextFormat;
+    IDWriteTextFormat *pTextFormat = nullptr;
 
     ThemeConfig::Global style;
     HINSTANCE hInst;

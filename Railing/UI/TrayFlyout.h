@@ -4,15 +4,12 @@
 #include <vector>
 #include <wincodec.h>
 #include "ThemeTypes.h"
-
-struct TrayIconData {
-    HICON hIcon;
-    RECT rect;
-};
+#include "TooltipHandler.h"
+#include "TrayBackend.h"
 
 class TrayFlyout {
 public:
-    TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, const ThemeConfig &config);
+    TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config);
     ~TrayFlyout();
 
     HWND hwnd = nullptr;
@@ -23,9 +20,17 @@ private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
     void OnClick(int x, int y, bool isRightClick);
+    void OnMouseLeave();
+    void OnMouseMove(int x, int y);
+    int hoveredIconIndex = -1;
+    TooltipHandler *tooltips = nullptr;
 
     ThemeConfig::Global style;
     void UpdateBitmapCache();
+
+    float layoutIconSize = 24.0f;
+    float layoutPadding = 12.0f;
+    int layoutCols = 4;
 
     // Animation support
     void UpdateAnimation();

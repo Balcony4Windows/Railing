@@ -219,6 +219,8 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     ctx.ramUsage = currentStats.ramUsage;
     ctx.volume = currentStats.volume;
     ctx.isMuted = currentStats.isMuted;
+    ctx.wifiSignal = currentStats.wifiSignal;
+    ctx.isWifiConnected = currentStats.isWifiConnected;
     ctx.appIcon = pAppIcon;
     pRenderTarget->SetDpi((float)ctx.dpi, (float)ctx.dpi);
     ctx.scale = ctx.dpi / 96.0f;
@@ -253,77 +255,133 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     for (Module *m : centerModules) m->CalculateWidth(ctx);
     for (Module *m : rightModules) m->CalculateWidth(ctx);
 
-    float startX = 0.0f;  // Start after margin
-    float startY = 0.0f;
-    float endX = ctx.logicalWidth; // End before margin
-    float endY = ctx.logicalHeight;
-
-    // Helper to register keys
-    auto RegisterKeys = [&](Module *m) {
-        moduleRects[m->config.type] = m->cachedRect;
-        if (!m->config.id.empty()) moduleRects[m->config.id] = m->cachedRect;
-
-        if (m->config.type == "group") {
-            GroupModule *g = static_cast<GroupModule *>(m);
-            for (auto *c : g->children) {
-                moduleRects[c->config.type] = c->cachedRect;
-                if (!c->config.id.empty()) moduleRects[c->config.id] = c->cachedRect;
-            }
-        }
-        };
+    moduleRects.clear();
 
     if (!ctx.isVertical) {
         float barHeight = ctx.logicalHeight;
-        float cursorX = startX;
+
+        // Left
+        float cursorX = 0.0f;
         for (Module *m : leftModules) {
-            float modW = m->width;
+            float w = m->width;
+            D2D1_RECT_F rect = D2D1::RectF(cursorX, 0.0f, cursorX + w, barHeight);
+
+            // Register Hitbox
+            moduleRects[m->config.id] = rect;
+            moduleRects[m->config.type] = rect;
+            if (m->config.type == "group") {
+                GroupModule *g = (GroupModule *)m;
+                Style s = g->GetEffectiveStyle();
+
+                // Start inside the group's padding
+                float childX = cursorX + s.padding.left + s.margin.left;
+
+                for (auto *c : g->children) {
+                    float cW = c->width;
+                    moduleRects[c->config.id] = D2D1::RectF(childX, 0.0f, childX + cW, barHeight);
+                    childX += cW;
+                }
+            }
+
             m->Draw(ctx, cursorX, 0.0f, barHeight);
-            RegisterKeys(m);
-            cursorX += modW;
+            cursorX += w;
         }
-        float rightCursor = endX;
+
+        // Right
+        float rightCursor = ctx.logicalWidth;
         for (auto it = rightModules.rbegin(); it != rightModules.rend(); ++it) {
             Module *m = *it;
-            float modW = m->width;
-            rightCursor -= modW;
+            float w = m->width;
+            rightCursor -= w;
+
+            D2D1_RECT_F rect = D2D1::RectF(rightCursor, 0.0f, rightCursor + w, barHeight);
+            moduleRects[m->config.id] = rect;
+            moduleRects[m->config.type] = rect;
+
+            if (m->config.type == "group") {
+                GroupModule *g = (GroupModule *)m;
+                Style s = g->GetEffectiveStyle();
+                float childX = rightCursor + s.padding.left + s.margin.left;
+                for (auto *c : g->children) {
+                    float cW = c->width;
+                    moduleRects[c->config.id] = D2D1::RectF(childX, 0.0f, childX + cW, barHeight);
+                    childX += cW;
+                }
+            }
+
             m->Draw(ctx, rightCursor, 0.0f, barHeight);
-            RegisterKeys(m);
         }
+
+        // Center
         float totalCenterW = 0;
         for (Module *m : centerModules) totalCenterW += m->width;
         float centerX = (ctx.logicalWidth - totalCenterW) / 2.0f;
         for (Module *m : centerModules) {
-            float modW = m->width;
+            float w = m->width;
+            D2D1_RECT_F rect = D2D1::RectF(centerX, 0.0f, centerX + w, barHeight);
+
+            moduleRects[m->config.id] = rect;
+            moduleRects[m->config.type] = rect;
+
+            if (m->config.type == "group") {
+                GroupModule *g = (GroupModule *)m;
+                Style s = g->GetEffectiveStyle();
+                float childX = centerX + s.padding.left + s.margin.left;
+                for (auto *c : g->children) {
+                    float cW = c->width;
+                    moduleRects[c->config.id] = D2D1::RectF(childX, 0.0f, childX + cW, barHeight);
+                    childX += cW;
+                }
+            }
+
             m->Draw(ctx, centerX, 0.0f, barHeight);
-            RegisterKeys(m);
-            centerX += modW;
+            centerX += w;
         }
     }
     else {
+        // Vertical Logic with same fix
         float barWidth = ctx.logicalWidth;
-        float cursorY = startY;
+
+        // Top (Left list)
+        float cursorY = 0.0f;
         for (Module *m : leftModules) {
-            float modH = m->width;
+            float h = m->width; // Vertical modules use width as height
+            D2D1_RECT_F rect = D2D1::RectF(0.0f, cursorY, barWidth, cursorY + h);
+
+            moduleRects[m->config.id] = rect;
+            moduleRects[m->config.type] = rect;
+
             m->Draw(ctx, 0.0f, cursorY, barWidth);
-            RegisterKeys(m);
-            cursorY += modH;
+            cursorY += h;
         }
-        float bottomCursor = endY;
+
+        // Bottom (Right list)
+        float bottomCursor = ctx.logicalHeight;
         for (auto it = rightModules.rbegin(); it != rightModules.rend(); ++it) {
             Module *m = *it;
-            float modH = m->width;
-            bottomCursor -= modH;
+            float h = m->width;
+            bottomCursor -= h;
+
+            D2D1_RECT_F rect = D2D1::RectF(0.0f, bottomCursor, barWidth, bottomCursor + h);
+            moduleRects[m->config.id] = rect;
+            moduleRects[m->config.type] = rect;
+
             m->Draw(ctx, 0.0f, bottomCursor, barWidth);
-            RegisterKeys(m);
         }
+
+        // Center
         float totalCenterH = 0;
         for (Module *m : centerModules) totalCenterH += m->width;
         float centerY = (ctx.logicalHeight - totalCenterH) / 2.0f;
         for (Module *m : centerModules) {
-            float modH = m->width;
+            float h = m->width;
+            D2D1_RECT_F rect = D2D1::RectF(0.0f, centerY, barWidth, centerY + h);
+
+            moduleRects[m->config.id] = rect;
+            moduleRects[m->config.type] = rect;
+
             m->Draw(ctx, 0.0f, centerY, barWidth);
-            RegisterKeys(m);
-            centerY += modH;
+            centerY += h;
         }
     }
 

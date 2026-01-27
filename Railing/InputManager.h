@@ -14,12 +14,12 @@ class InputManager
 {
 	Railing *app;
 	RailingRenderer *renderer;
-	TooltipHandler *tooltips;
 
 	bool isTrackingMouse = false;
 	std::wstring lastTooltipText;
 
 public:
+
 	InputManager(Railing *appInstance, RailingRenderer *rr, TooltipHandler *t);
 
 	void HandleMouseMove(HWND hwnd, int x, int y);
@@ -27,6 +27,8 @@ public:
 	void HandleRightClick(HWND hwnd, int x, int y);
 	void HandleScroll(HWND hwnd, short delta);
 	void OnMouseLeave(HWND hwnd);
+
+	TooltipHandler *tooltips;
 
 private:
 	Module *HitTest(int x, int y, D2D1_RECT_F &outRect);

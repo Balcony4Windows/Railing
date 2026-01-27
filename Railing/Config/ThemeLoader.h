@@ -47,6 +47,7 @@ public:
 			config.global.font = g.value("font", "Segoe UI");
 			config.global.fontSize = g.value("font_size", 14.0f);
 			config.global.blur = g.value("blur", true);
+			config.global.highlights = ParseColor(g.value("highlights", "#FF6495ED"));
 			config.global.autoHide = g.value("auto_hide", false);
 			config.global.autoHideDelay = g.value("hide_delay", 500);
 
@@ -119,6 +120,7 @@ public:
 					if (v.contains("decay")) mod.viz.decay = v["decay"].get<float>();
 					if (v.contains("offset")) mod.viz.offset = v["offset"].get<int>();
 					if (v.contains("spacing")) mod.viz.spacing = v["spacing"].get<float>();
+					if (v.contains("thickness")) mod.viz.thickness = v["thickness"].get<float>();
 			}
 
 			config.modules[key] = mod;

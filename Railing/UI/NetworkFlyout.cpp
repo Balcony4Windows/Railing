@@ -243,27 +243,33 @@ void NetworkFlyout::Toggle(RECT anchorRect) {
         isWorking = false;
 
         PositionWindow(anchorRect);
+        if (now - lastScanTime > 10000) {
+            isScanning = true;
+            lastScanTime = now;
+            std::thread([this]() {
+                backend.RequestScan();
+                auto nets = backend.ScanNetworks();
+                try {
+                    std::lock_guard<std::recursive_mutex> lock(networkMutex);
+                    cachedNetworks = nets;
+                }
+                catch (...) {}
 
-        std::thread([this]() {
-            backend.RequestScan();
-            auto nets = backend.ScanNetworks();
-            try {
-                std::lock_guard<std::recursive_mutex> lock(networkMutex);
-                cachedNetworks = nets;
-            }
-            catch (...) {}
-            if (IsWindow(hwnd)) PostMessage(hwnd, WM_NET_SCAN_COMPLETE, 0, 0);
-            Sleep(3500);
+                if (IsWindow(hwnd)) PostMessage(hwnd, WM_NET_SCAN_COMPLETE, 0, 0);
+                Sleep(3500);
 
-            nets = backend.ScanNetworks();
-            try {
-                std::lock_guard<std::recursive_mutex> lock(networkMutex);
-                cachedNetworks = nets;
-            }
-            catch (...) {} // Trigger a redraw with the new data
-            if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+                nets = backend.ScanNetworks();
+                try {
+                    std::lock_guard<std::recursive_mutex> lock(networkMutex);
+                    cachedNetworks = nets;
+                }
+                catch (...) {} // Trigger a redraw with the new data
+                isScanning = false;
+                if (IsWindow(hwnd)) PostMessage(hwnd, WM_NET_SCAN_COMPLETE, 0, 0);
 
-            }).detach();
+                }).detach();
+        }
+        else isScanning = false;
 
         float dpi = (float)GetDpiForWindow(hwnd);
         float scale = dpi / 96.0f;
@@ -377,30 +383,41 @@ void NetworkFlyout::Draw() {
     if (theme.global.blur && bgColor.a > 0.6f) bgColor.a = 0.6f;
     bgColor.a *= currentAlpha;
     if (bgColor.a == 0.0f) bgColor = D2D1::ColorF(0.08f, 0.08f, 0.1f, 0.6f * currentAlpha);
-
+    
+    float rad = theme.global.radius;
     pBgBrush->SetColor(bgColor);
-    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(layout, 12.0f, 12.0f), pBgBrush);
+    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(layout, rad, rad), pBgBrush);
 
     if (theme.global.borderWidth > 0.0f) {
         pBorderBrush->SetColor(theme.global.borderColor);
-        pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(layout, 12.0f, 12.0f), pBorderBrush, theme.global.borderWidth);
+        pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(layout, rad, rad), pBorderBrush, theme.global.borderWidth);
     }
 
     float scale = GetDpiForWindow(hwnd) / 96.0f;
     pRenderTarget->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale));
     float logicalW = (float)width;
+    std::wstring titleText = L"Wi-Fi Networks";
+    if (isScanning) titleText = L"Scanning...";
     pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
     pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, currentAlpha));
-    pRenderTarget->DrawTextW(L"Wi-Fi Networks", 14, pTextFormat, D2D1::RectF(0, 0, logicalW, (float)headerHeight), pTextBrush);
+    pRenderTarget->DrawTextW(titleText.c_str(), (UINT32)titleText.length(), pTextFormat, D2D1::RectF(0, 0, logicalW, (float)headerHeight), pTextBrush);
     pHighlightBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f * currentAlpha));
     pRenderTarget->DrawLine(D2D1::Point2F(15, (float)headerHeight), D2D1::Point2F(logicalW - 15, (float)headerHeight), pHighlightBrush, 1.0f);
 
     pRenderTarget->PushAxisAlignedClip(D2D1::RectF(0, (float)headerHeight, logicalW, (float)currentWindowHeight - 5), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
     if (cachedNetworks.empty()) {
-        pRenderTarget->DrawTextW(L"Scanning...", 11, pTextFormat, D2D1::RectF(0, 60, logicalW, 100), pTextBrush);
+        // If the list is empty, show status text in the middle
+        std::wstring emptyText = isScanning ? L"Scanning..." : L"No Networks Found";
+
+        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+        pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.6f * currentAlpha));
+        pRenderTarget->DrawTextW(emptyText.c_str(), (UINT32)emptyText.length(), pTextFormat, D2D1::RectF(0, 60, logicalW, 100), pTextBrush);
+
+        // Force redraw so we see the status change when scan finishes
+        if (isScanning) InvalidateRect(hwnd, NULL, FALSE);
     }
     else {
         float y = (float)headerHeight - scrollOffset;
@@ -430,7 +447,9 @@ void NetworkFlyout::Draw() {
             else if (net.signalQuality > 20) icon = L"\uE872";
 
             D2D1_RECT_F iconRect = D2D1::RectF(rowRect.left + 5, rowRect.top, rowRect.left + 45, rowRect.top + itemHeight);
-            pTextBrush->SetColor(net.isConnected ? D2D1::ColorF(D2D1::ColorF::CornflowerBlue, currentAlpha) : D2D1::ColorF(1, 1, 1, currentAlpha));
+            D2D1_COLOR_F btnColor = D2D1::ColorF(D2D1::ColorF::CornflowerBlue);
+            btnColor.a *= currentAlpha;
+            pTextBrush->SetColor(net.isConnected ? btnColor : D2D1::ColorF(1, 1, 1, currentAlpha));
             pRenderTarget->DrawTextW(icon.c_str(), 1, pIconFormat, iconRect, pTextBrush);
 
             // SSID
@@ -522,7 +541,9 @@ void NetworkFlyout::Draw() {
 
                     D2D1_RECT_F btnRect = D2D1::RectF(rowRect.right - 85, contentY, rowRect.right - 10, contentY + 35);
                     float btnAlpha = isWorking ? 0.4f : 0.8f;
-                    pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::CornflowerBlue, btnAlpha * currentAlpha));
+                    D2D1_COLOR_F btnColor = theme.global.highlights;
+                    btnColor.a *= (btnAlpha * currentAlpha);
+                    pBgBrush->SetColor(btnColor);
                     pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(btnRect, 4, 4), pBgBrush);
                     pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, currentAlpha));
                     pRenderTarget->DrawTextW(isWorking ? L"..." : L"Go", 3, pTextFormat, btnRect, pTextBrush);
@@ -541,6 +562,35 @@ void NetworkFlyout::Draw() {
     }
     pRenderTarget->PopAxisAlignedClip();
 
+    if (isScanning) {
+        float trackH = 3.0f;
+        float trackY = (float)headerHeight; // Draw exactly on the separator line
+
+        // Use system time for smooth looping
+        float time = (float)GetTickCount64() / 1000.0f;
+        float t = fmod(time * 1.5f, 1.0f); // Speed multiplier
+
+        float barWidth = width * 0.3f; // Bar is 30% width of window
+        float range = width + barWidth;
+        float offset = (range * t) - barWidth;
+
+        // Calculate raw positions
+        float startX = offset;
+        float endX = startX + barWidth;
+
+        // Clip to window bounds so it doesn't draw outside
+        float clStart = max(startX, 0.0f);
+        float clEnd = min(endX, (float)width);
+
+        if (clEnd > clStart) {
+            D2D1_RECT_F barRect = D2D1::RectF(clStart, trackY, clEnd, trackY + trackH);
+            D2D1_COLOR_F btnColor = theme.global.highlights;
+            btnColor.a *= currentAlpha;
+            pBgBrush->SetColor(btnColor);
+            pRenderTarget->FillRectangle(barRect, pBgBrush);
+        }
+    }
+
     if (maxScroll > 0) {
         float trackH = (float)currentWindowHeight - headerHeight - 10;
         float thumbH = max(30.0f, trackH * (trackH / (trackH + maxScroll)));
@@ -551,6 +601,7 @@ void NetworkFlyout::Draw() {
     }
 
     pRenderTarget->EndDraw();
+    if (isScanning) InvalidateRect(hwnd, NULL, FALSE);
 }
 
 void NetworkFlyout::OnHover(int x, int y) {

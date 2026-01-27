@@ -18,7 +18,7 @@
   "layout": {
     "left": [ "workspaces" ],
     "center": [ "clock" ],
-    "right": [ "browser", "files", "tray" ]
+    "right": [ "browser", "files", "wifi", "audio", "tray" ]
   },
   "workspaces": {
     "type": "workspaces",
@@ -48,6 +48,16 @@
     "type": "custom",
     "format": "Files",
     "on_click": "exec:explorer.exe",
+    "style": { "fg": "#EBCB8B", "bg": "#FF3B4252", "padding": [0, 8], "margin": [4, 4], "radius": 4 },
+    "states": { "hover": { "bg": "#FFEBCB8B", "fg": "#2E3440" } }
+  },
+  "wifi": {
+    "type": "network",
+    "style": { "fg": "#EBCB8B", "bg": "#FF3B4252", "padding": [0, 8], "margin": [4, 4], "radius": 4 },
+    "states": { "hover": { "bg": "#FFEBCB8B", "fg": "#2E3440" } }
+  },
+  "audio": {
+    "type": "audio",
     "style": { "fg": "#EBCB8B", "bg": "#FF3B4252", "padding": [0, 8], "margin": [4, 4], "radius": 4 },
     "states": { "hover": { "bg": "#FFEBCB8B", "fg": "#2E3440" } }
   },

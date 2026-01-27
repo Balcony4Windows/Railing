@@ -16,6 +16,7 @@ public:
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
 		Style s = GetEffectiveStyle();
+
 		if (s.has_bg) {
 			D2D1_RECT_F bgRect = D2D1::RectF(
 				x + s.margin.left, y + s.margin.top,
@@ -26,7 +27,13 @@ public:
 		}
 		std::wstring text = L"\uE774"; // Default Globe
 		if (config.type == "network") {
-			text = L"\uE774";
+			if (ctx.isWifiConnected) {
+				if (ctx.wifiSignal > 80) text = L"\uE701"; // Full
+				else if (ctx.wifiSignal > 60) text = L"\uE874"; // 3 Bars
+				else if (ctx.wifiSignal > 40) text = L"\uE873"; // 2 Bars
+				else if (ctx.wifiSignal > 20) text = L"\uE872"; // 1 Bar
+				else text = L"\uE871"; // Dot
+			}
 		}
 
 		if (config.type == "audio") {

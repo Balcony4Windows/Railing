@@ -6,6 +6,7 @@
 #include <vector>
 #include "ThemeTypes.h"
 #include "WorkspaceManager.h"
+#include <Types.h>
 
 struct RenderContext {
     ID2D1RenderTarget *rt; /* D2D RESOURCES */
@@ -25,8 +26,13 @@ struct RenderContext {
     int cpuUsage = 0; /* SYSTEM STATE */
     int ramUsage = 0;
     int gpuTemp = 0;
+
     float volume = 0.0f;
 	bool isMuted = false;
+    
+    bool isWifiConnected = false;
+    int wifiSignal = 0; // 0 - 100
+
     ID2D1Bitmap *appIcon = nullptr;
 
     const std::vector<WindowInfo> *windows; // Live app list

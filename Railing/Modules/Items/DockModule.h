@@ -1,16 +1,21 @@
 #pragma once
 #include "Module.h"
 #include "WorkspaceManager.h"
+#include "PinnedAppsIO.h"
 #include <shellapi.h>
 #include <map>
 #include <vector>
 #include <algorithm>
 #include <set>
 #include <cwctype>
+#include <PinnedAppsIO.h>
+
+#pragma comment(lib, "version.lib")
 
 class DockModule : public Module {
     std::map<HWND, ID2D1Bitmap *> iconCache;
     std::map<size_t, ID2D1Bitmap *> pinnedIconCache;
+    std::vector<PinnedAppEntry> m_pinnedApps;
 
     ID2D1PathGeometry *pStarGeo = nullptr; /* Star symbol! Pinned apps */
     std::set<HWND> attentionWindows; // For Shell hooks
@@ -28,6 +33,24 @@ class DockModule : public Module {
         std::wstring lower = path;
         std::transform(lower.begin(), lower.end(), lower.begin(), std::towlower);
         return std::hash<std::wstring>{}(lower);
+    }
+
+    std::pair<std::wstring, int> GetEffectiveIconPath(const WindowInfo &win) {
+        std::wstring path = win.exePath;
+        int index = 0;
+
+        if (win.isPinned) {
+            size_t h = GetPathHash(win.exePath);
+            for (const auto &entry : m_pinnedApps) {
+                // Find matching pinned entry
+                if (GetPathHash(entry.path) == h && !entry.iconPath.empty()) {
+                    path = entry.iconPath;
+                    index = entry.iconIndex;
+                    break;
+                }
+            }
+        }
+        return { path, index };
     }
 
     void CreateStarGeometry(ID2D1Factory *pFactory, float radius) {
@@ -52,6 +75,19 @@ class DockModule : public Module {
         // Check Running Cache (Fastest)
         if (win.hwnd && iconCache.count(win.hwnd)) return iconCache[win.hwnd];
 
+        auto [loadPath, loadIndex] = GetEffectiveIconPath(win);
+
+        if (win.isPinned) {
+            size_t h = GetPathHash(win.exePath);
+            for (const auto &entry : m_pinnedApps) {
+                if (GetPathHash(entry.path) == h && !entry.iconPath.empty()) {
+                    loadPath = entry.iconPath;
+                    loadIndex = entry.iconIndex;
+                    break;
+                }
+            }
+        }
+
         size_t pathHash = GetPathHash(win.exePath);
         if (pinnedIconCache.count(pathHash)) {
             ID2D1Bitmap *existing = pinnedIconCache[pathHash];
@@ -65,11 +101,11 @@ class DockModule : public Module {
         // Load from Disk (Expensive)
         HICON hIcon = NULL;
         bool shouldDestroy = false;
-        if (!win.exePath.empty()) {
+        if (!loadPath.empty()) {
             int targetSize = (int)iconSize;
             if (targetSize < 32) targetSize = 32; else if (targetSize < 48) targetSize = 48;
             UINT id = 0;
-            if (PrivateExtractIconsW(win.exePath.c_str(), 0, targetSize, targetSize, &hIcon, &id, 1, 0) > 0) {
+            if (PrivateExtractIconsW(loadPath.c_str(), loadIndex, targetSize, targetSize, &hIcon, &id, 1, 0) > 0) {
                 if (hIcon) shouldDestroy = true;
             }
         }
@@ -80,8 +116,8 @@ class DockModule : public Module {
             if (!hIcon) hIcon = (HICON)GetClassLongPtr(win.hwnd, GCLP_HICON);
         }
 
-        if (!hIcon && !win.exePath.empty()) {
-            if (ExtractIconExW(win.exePath.c_str(), 0, &hIcon, NULL, 1) > 0 && hIcon) shouldDestroy = true;
+        if (!hIcon && !loadPath.empty()) {
+            if (ExtractIconExW(loadPath.c_str(), 0, &hIcon, NULL, 1) > 0 && hIcon) shouldDestroy = true;
         }
         if (!hIcon) { hIcon = LoadIcon(NULL, IDI_APPLICATION); shouldDestroy = false; }
 
@@ -106,7 +142,7 @@ class DockModule : public Module {
     }
 
     void UpdateStableList(RenderContext &ctx) {
-        if (!ctx.windows || !ctx.pinnedApps) return;
+        if (!ctx.windows) return;
         if (++updateThrottle < 4) return;
         updateThrottle = 0;
 
@@ -124,23 +160,20 @@ class DockModule : public Module {
         }
 
         std::vector<WindowInfo> nextList;
-        nextList.reserve(ctx.pinnedApps->size() + zOrderList.size());
+        nextList.reserve(m_pinnedApps.size() + zOrderList.size());
         std::set<HWND> processedHwnds;
 
         // PHASE A: Pinned Apps
-        for (const auto &path : *ctx.pinnedApps) {
+        for (PinnedAppEntry &entry : m_pinnedApps) {
             WindowInfo item = {};
-            item.exePath = path;
+            item.exePath = entry.path;
             item.isPinned = true;
             item.hwnd = NULL;
-
-            size_t lastSlash = path.find_last_of(L"\\/");
-            item.title = (lastSlash != std::string::npos) ? path.substr(lastSlash + 1) : L"App";
-            size_t pathHash = GetPathHash(path);
+            size_t pathHash = GetPathHash(entry.path);
 
             bool foundStable = false;
             for (const auto &old : stableList) {
-                if (old.isPinned && old.exePath == path && old.hwnd && currentMap.count(old.hwnd)) {
+                if (old.isPinned && old.exePath == entry.path && old.hwnd && currentMap.count(old.hwnd)) {
                     if (GetPathHash(old.exePath) == pathHash) {
                         item.hwnd = old.hwnd;
                         item.title = currentMap[old.hwnd]->title;
@@ -213,11 +246,39 @@ public:
         if (cfg.dockIconSize > 0) this->iconSize = cfg.dockIconSize;
         if (cfg.dockSpacing > 0) this->spacing = cfg.dockSpacing;
         if (cfg.dockAnimSpeed > 0) this->animSpeed = cfg.dockAnimSpeed;
+
+        m_pinnedApps = PinnedAppsIO::Load();
     }
+
 
     ~DockModule() {
         for (auto &[k, v] : iconCache) if (v) v->Release();
         if (pStarGeo) pStarGeo->Release();
+    }
+
+    void PinApp(std::wstring path, std::wstring name = L"", std::wstring iconPath = L"", int iconIndex = 0) {
+        for (PinnedAppEntry &app : m_pinnedApps) {
+            if (GetPathHash(app.path) == GetPathHash(path)) return;
+        }
+        m_pinnedApps.push_back({ path, L"", name, iconPath, iconIndex });
+        PinnedAppsIO::Save(m_pinnedApps);
+    }
+
+    void UnpinApp(std::wstring path) {
+        auto it = std::remove_if(m_pinnedApps.begin(), m_pinnedApps.end(),
+            [&](const PinnedAppEntry &e) { return GetPathHash(e.path) == GetPathHash(path); });
+        if (it != m_pinnedApps.end()) {
+            m_pinnedApps.erase(it, m_pinnedApps.end());
+            PinnedAppsIO::Save(m_pinnedApps);
+        }
+    }
+
+    bool IsPinned(const std::wstring &path) {
+        size_t h = GetPathHash(path);
+        for (const auto &app : m_pinnedApps) {
+            if (GetPathHash(app.path) == h) return true;
+        }
+        return false;
     }
 
     float GetContentWidth(RenderContext &ctx) override {
@@ -259,9 +320,7 @@ public:
         float targetX = -1.0f;
         float searchCursor = startX;
 
-        if (!pStarGeo && ctx.factory) {
-            CreateStarGeometry(ctx.factory, 6.0f);
-        }
+        if (!pStarGeo && ctx.factory) CreateStarGeometry(ctx.factory, 6.0f);
 
         for (const auto &win : stableList) {
             if (win.hwnd == ctx.foregroundWindow) {
@@ -368,7 +427,10 @@ public:
                 for (const auto &w : stableList) {
                     if (w.hwnd == NULL && w.isPinned && GetPathHash(w.exePath) == it->first)
                     {
-                        isUsed = true; break;
+                        auto [effPath, effIndex] = GetEffectiveIconPath(w);
+                        if (GetPathHash(effPath) == it->first) {
+                            isUsed = true; break;
+                        }
                     }
                 }
                 if (!isUsed) {
@@ -400,16 +462,69 @@ public:
         return (int)stableList.size();
     }
 
+    std::wstring GetAppDescription(const std::wstring &path) {
+        DWORD handle;
+        DWORD size = GetFileVersionInfoSizeW(path.c_str(), &handle);
+        if (size == 0) return L"";
+
+        std::vector<BYTE> data(size);
+        if (!GetFileVersionInfoW(path.c_str(), handle, size, data.data())) return L"";
+
+        struct LANGANDCODEPAGE {
+            WORD wLanguage;
+            WORD wCodePage;
+        } *lpTranslate;
+
+        UINT cbTranslate;
+        // Read the list of languages and code pages.
+        if (VerQueryValueW(data.data(), L"\\VarFileInfo\\Translation", (LPVOID *)&lpTranslate, &cbTranslate)) {
+            for (unsigned int i = 0; i < (cbTranslate / sizeof(struct LANGANDCODEPAGE)); i++) {
+                wchar_t subBlock[50];
+                swprintf_s(subBlock, L"\\StringFileInfo\\%04x%04x\\FileDescription",
+                    lpTranslate[i].wLanguage, lpTranslate[i].wCodePage);
+
+                void *desc = nullptr;
+                UINT descLen = 0;
+                if (VerQueryValueW(data.data(), subBlock, &desc, &descLen) && descLen > 0) {
+                    std::wstring result((wchar_t *)desc);
+                    if (!result.empty()) return result;
+                }
+            }
+        }
+        return L"";
+    }
+
     std::wstring GetTitleAtIndex(int index) {
         if (index >= 0 && index < stableList.size()) {
-            // If it's a pinned app, the title might be empty. Fallback to EXE name.
-            if (stableList[index].title.empty() && !stableList[index].exePath.empty()) {
-                std::wstring path = stableList[index].exePath;
-                size_t lastSlash = path.find_last_of(L"\\");
-                if (lastSlash != std::string::npos) return path.substr(lastSlash + 1);
-                return path;
+
+            // Window Title (if running)
+            if (!stableList[index].title.empty()) {
+                return stableList[index].title;
             }
-            return stableList[index].title;
+
+            // Manual Name (from PinnedAppEntry)
+            if (stableList[index].isPinned) {
+                size_t h = GetPathHash(stableList[index].exePath);
+                for (const auto &entry : m_pinnedApps) {
+                    if (GetPathHash(entry.path) == h && !entry.name.empty()) {
+                        return entry.name;
+                    }
+                }
+            }
+
+            // File Description (Metadata)
+            if (!stableList[index].exePath.empty()) {
+                std::wstring path = stableList[index].exePath;
+                std::wstring desc = GetAppDescription(path);
+                if (!desc.empty()) return desc;
+
+                size_t lastSlash = path.find_last_of(L"\\/");
+                std::wstring filename = (lastSlash != std::string::npos) ? path.substr(lastSlash + 1) : path;
+                size_t lastDot = filename.find_last_of(L".");
+                if (lastDot != std::string::npos) filename = filename.substr(0, lastDot);
+                if (!filename.empty()) filename[0] = towupper(filename[0]);
+                return filename;
+            }
         }
         return L"";
     }

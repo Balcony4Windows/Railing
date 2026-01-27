@@ -24,15 +24,11 @@ public:
 
             DWORD myPID = GetCurrentProcessId();
 
-            // ONLY update activeIndex if the focused window is NOT the Bar/Flyout
             if (targetPID != myPID) {
-                if (ctx.workspaces->managedWindows.count(targetWindow)) {
+                if (IsWindowVisible(targetWindow) && ctx.workspaces->managedWindows.count(targetWindow))
                     this->activeIndex = ctx.workspaces->managedWindows[targetWindow];
-                }
-                else {
-                    this->activeIndex = ctx.workspaces->currentWorkspace;
-                }
-            }
+                else this->activeIndex = ctx.workspaces->currentWorkspace;
+            } else this->activeIndex = ctx.workspaces->currentWorkspace;
         }
 
         float totalWidth = 0.0f;
