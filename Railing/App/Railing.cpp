@@ -107,10 +107,6 @@ bool Railing::Initialize(HINSTANCE hInstance)
     for (const auto &win : allWindows) workspaces.AddWindow(win.hwnd);
     for (int i = 0; i < 5; i++) RegisterHotKey(hwndBar, 100 + i, MOD_ALT | MOD_NOREPEAT, 0x31 + i);
 
-    RegisterAppBar(hwndBar);
-    ShowWindow(hwndBar, SW_SHOW);
-    UpdateAppBarPosition(hwndBar, cachedConfig);
-
     // Animation / Show
     RECT targetRect; GetWindowRect(hwndBar, &targetRect);
     int finalW = targetRect.right - targetRect.left;

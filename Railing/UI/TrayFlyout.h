@@ -20,17 +20,26 @@ private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
     void OnClick(int x, int y, bool isRightClick);
+    void OnDoubleClick(int x, int y);
     void OnMouseLeave();
     void OnMouseMove(int x, int y);
+    void UpdateLayout();
     int hoveredIconIndex = -1;
     TooltipHandler *tooltips = nullptr;
+    bool ignoreNextDeactivate = false;
+
+    void RefreshIcons() {
+        currentIcons = TrayBackend::Get().GetIcons();
+        UpdateBitmapCache();
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
 
     ThemeConfig::Global style;
     void UpdateBitmapCache();
 
-    float layoutIconSize = 24.0f;
+    float layoutIconSize = 32.0f;
     float layoutPadding = 12.0f;
-    int layoutCols = 4;
+    int layoutCols = 5;
 
     // Animation support
     void UpdateAnimation();

@@ -10,6 +10,15 @@
 
 #pragma comment(lib, "psapi.lib")
 
+#ifndef NIN_SELECT
+#define NIN_SELECT      (WM_USER + 0)
+#define NIN_KEYSELECT   (WM_USER + 1)
+#define NIN_BALLOONSHOW (WM_USER + 2)
+#define NIN_BALLOONHIDE (WM_USER + 3)
+#define NIN_POPUPOPEN   (WM_USER + 6)
+#define NIN_POPUPCLOSE  (WM_USER + 7)
+#endif
+
 struct TrayIconData {
     HWND ownerHwnd;
     UINT uID;
@@ -18,9 +27,10 @@ struct TrayIconData {
     std::wstring tooltip;
     GUID guidItem;
     RECT rect = { 0 };
+    UINT uVersion = 0;
 };
 
-#pragma pack(push, 1)  // Force byte alignment
+#pragma pack(push, 1)
 
 struct NOTIFYICONDATA32 {
     DWORD cbSize;
@@ -87,6 +97,7 @@ private:
     std::vector<TrayIconData> icons;
     std::recursive_mutex iconMutex;
     UINT msgTaskbarCreated = 0;
+    std::function<void()> onIconsChanged;
 
     TrayBackend() {
         msgTaskbarCreated = RegisterWindowMessage(L"TaskbarCreated");
@@ -106,30 +117,26 @@ private:
             DWORD size = MAX_PATH;
             if (QueryFullProcessImageNameW(hProcess, 0, path, &size)) {
 
-                // FIX IS HERE: Removed SHGFI_USEFILEATTRIBUTES
-                // We WANT the shell to inspect the file content to get the specific app icon.
+                // 1. Try SHGetFileInfo with LARGEICON (usually 32x32)
                 SHFILEINFOW sfi = { 0 };
-                if (SHGetFileInfoW(path, 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_SMALLICON)) {
+                if (SHGetFileInfoW(path, 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
                     hIcon = sfi.hIcon;
                 }
-
-                // Fallback: Raw extraction
-                if (!hIcon) ExtractIconExW(path, 0, NULL, &hIcon, 1);
+                if (!hIcon) ExtractIconExW(path, 0, &hIcon, NULL, 1);
             }
             CloseHandle(hProcess);
         }
 
-        // Fallbacks
+        if (!hIcon) hIcon = (HICON)SendMessage(hwnd, WM_GETICON, ICON_BIG, 0);
+        if (!hIcon) hIcon = (HICON)GetClassLongPtr(hwnd, GCLP_HICON);
         if (!hIcon) hIcon = (HICON)SendMessage(hwnd, WM_GETICON, ICON_SMALL, 0);
-        if (!hIcon) hIcon = (HICON)GetClassLongPtr(hwnd, GCLP_HICONSM);
 
         return hIcon;
     }
 
     void CreateHostWindow() {
-        if (FindWindow(L"Shell_TrayWnd", NULL) != NULL) {
+        if (FindWindow(L"Shell_TrayWnd", NULL) != NULL)
             OutputDebugString(L"[Railing] WARNING: Another Shell_TrayWnd exists!\n");
-        }
 
         WNDCLASSEX wc = { sizeof(WNDCLASSEX) };
         wc.lpfnWndProc = HostProc;
@@ -166,51 +173,40 @@ private:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
 
+
     LRESULT HandleCopyData(HWND sender, COPYDATASTRUCT *cds) {
         if (cds->dwData != 1) return FALSE;
 
-        DWORD dwMessage = 0;
-        HWND hWnd = sender;
-        UINT uID = 0;
-        UINT uFlags = 0;
-        UINT uCallbackMsg = 0;
-        HICON hRawIcon = NULL;
-        std::wstring szTip;
+        TRAY_NOTIFY_DATA_HEADER_32 *pData = (TRAY_NOTIFY_DATA_HEADER_32 *)cds->lpData;
+        if (pData->dwSignature != 0x34753423) return FALSE;
 
-        if (cds->cbData < sizeof(TRAY_NOTIFY_DATA_HEADER)) {
-            TRAY_NOTIFY_DATA_HEADER_32 *p32 = (TRAY_NOTIFY_DATA_HEADER_32 *)cds->lpData;
+        DWORD dwMessage = pData->dwMessage;
+        HWND hWnd = (HWND)(ULONG_PTR)pData->nid.hWnd;
+        UINT uID = pData->nid.uID;
+        UINT uFlags = pData->nid.uFlags;
+        UINT uCallbackMsg = pData->nid.uCallbackMessage; // Offset 16 - CORRECT
+        HICON hRawIcon = (HICON)(ULONG_PTR)pData->nid.hIcon;
 
-            dwMessage = p32->dwMessage;
-            uID = p32->nid.uID;
-            uFlags = p32->nid.uFlags;
-            uCallbackMsg = p32->nid.uCallbackMessage;
-            hRawIcon = (HICON)(ULONG_PTR)p32->nid.hIcon;
-            szTip = std::wstring(p32->nid.szTip, wcsnlen(p32->nid.szTip, 128));
-        }
-        else {
-            BYTE *pData = (BYTE *)cds->lpData;
+        std::wstring szTip = std::wstring(pData->nid.szTip, wcsnlen(pData->nid.szTip, 128));
+        GUID parsedGuid = pData->nid.guidItem;
+        bool hasGuid = (uFlags & NIF_GUID) && !IsEqualGUID(parsedGuid, GUID_NULL);
 
-            dwMessage = *((DWORD *)(pData + 4));
-
-            // Use SENDER for HWND - this is the actual window that sent the message!
-            hWnd = sender;
-
-            // Use structure cast for the rest
-            TRAY_NOTIFY_DATA_HEADER *pHeader = (TRAY_NOTIFY_DATA_HEADER *)cds->lpData;
-            uID = pHeader->nid.uID;
-            uFlags = pHeader->nid.uFlags;
-            uCallbackMsg = pHeader->nid.uCallbackMessage;
-            hRawIcon = pHeader->nid.hIcon;
-
-            // szTip at proven working offset
-            WCHAR *pSzTip = (WCHAR *)(pData + 32);
-            szTip = pSzTip;
-        }
+        // --- LOGGING TO CONFIRM ---
+        // You should now see valid messages like 0x400, 0x404, etc.
+        /*
+        wchar_t dbg[256];
+        swprintf(dbg, 256, L"[Tray] FIXED -> ID:%u | Msg:0x%X | Tip: %.10s\n",
+            uID, uCallbackMsg, szTip.c_str());
+        OutputDebugString(dbg);
+        */
 
         std::lock_guard<std::recursive_mutex> lock(iconMutex);
 
         auto it = std::find_if(icons.begin(), icons.end(), [&](const TrayIconData &item) {
-            return (item.ownerHwnd == hWnd && item.uID == uID);
+            if (hasGuid && !IsEqualGUID(item.guidItem, GUID_NULL)) {
+                return IsEqualGUID(item.guidItem, parsedGuid);
+            }
+            return (item.ownerHwnd == hWnd && item.uID == uID ? TRUE : FALSE);
             });
 
         if (dwMessage == NIM_DELETE) {
@@ -218,6 +214,12 @@ private:
                 if (it->hIcon) DestroyIcon(it->hIcon);
                 icons.erase(it);
             }
+            NotifyIconsChanged();
+            return TRUE;
+        }
+
+        if (dwMessage == NIM_SETVERSION) {
+            if (it != icons.end()) it->uVersion = pData->nid.uTimeout;
             return TRUE;
         }
 
@@ -226,16 +228,20 @@ private:
             target = &(*it);
         }
         else {
+			if (dwMessage == NIM_MODIFY) return FALSE; // Can't modify non-existing icon
             icons.push_back({});
             target = &icons.back();
             target->ownerHwnd = hWnd;
             target->uID = uID;
         }
+        if (hasGuid) target->guidItem = parsedGuid;
 
-        if (uFlags & NIF_MESSAGE) target->uCallbackMessage = uCallbackMsg;
+        if ((uFlags & NIF_MESSAGE) || (target->uCallbackMessage == 0 && uCallbackMsg != 0)) {
+            target->uCallbackMessage = uCallbackMsg;
+        }
+
         if (!szTip.empty()) target->tooltip = szTip;
-
-        if (target->tooltip.empty()) {  // Only if completely empty
+        if (target->tooltip.empty()) {
             DWORD pid = 0;
             GetWindowThreadProcessId(hWnd, &pid);
             HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -243,7 +249,6 @@ private:
                 WCHAR path[MAX_PATH];
                 DWORD size = MAX_PATH;
                 if (QueryFullProcessImageNameW(hProcess, 0, path, &size)) {
-                    // Try to get FileDescription from version info first
                     DWORD dummy;
                     DWORD versionInfoSize = GetFileVersionInfoSizeW(path, &dummy);
                     if (versionInfoSize > 0) {
@@ -251,20 +256,15 @@ private:
                         if (GetFileVersionInfoW(path, 0, versionInfoSize, versionInfo.data())) {
                             WCHAR *description = nullptr;
                             UINT descLen = 0;
-                            // Query FileDescription
                             if (VerQueryValueW(versionInfo.data(), L"\\StringFileInfo\\040904b0\\FileDescription",
                                 (LPVOID *)&description, &descLen) && description) {
                                 target->tooltip = description;
-
                                 if (target->tooltip.find(L" notification icon") != std::wstring::npos) {
                                     target->tooltip = target->tooltip.substr(0, target->tooltip.find(L" notification icon"));
                                 }
-
                             }
                         }
                     }
-
-                    // Fallback to filename if version info didn't work
                     if (target->tooltip.empty()) {
                         WCHAR *filename = wcsrchr(path, L'\\');
                         if (filename) {
@@ -284,26 +284,20 @@ private:
 
         if ((uFlags & NIF_ICON) || target->hIcon == NULL) {
             HICON hNew = NULL;
-
-            // Best quality if it works
             if (hRawIcon) hNew = CopyIcon(hRawIcon);
-
-            // Good for cross-process
             if (!hNew && hRawIcon) hNew = DuplicateIcon(NULL, hRawIcon);
-
-            // 3. Robust Fallback: Get Icon from Process/Shell
             if (!hNew) {
                 if (IsWindow(hWnd)) hNew = GetIconFromWindow(hWnd);
             }
-
-            // 4. Final Fallback (System Default)
             if (!hNew && target->hIcon == NULL) target->hIcon = LoadIcon(NULL, IDI_APPLICATION);
             else if (hNew) {
                 if (target->hIcon) DestroyIcon(target->hIcon);
                 target->hIcon = hNew;
             }
         }
-}
+        NotifyIconsChanged();
+        return TRUE;
+    }
 
 public:
     static TrayBackend &Get() {
@@ -316,17 +310,72 @@ public:
         return icons;
     }
 
-    void SendClick(const TrayIconData &icon, bool isRightClick) {
-        if (!IsWindow(icon.ownerHwnd)) return;
-        UINT mouseMsg = isRightClick ? WM_RBUTTONUP : WM_LBUTTONUP;
-        UINT downMsg = isRightClick ? WM_RBUTTONDOWN : WM_LBUTTONDOWN;
-        PostMessage(icon.ownerHwnd, icon.uCallbackMessage, (WPARAM)icon.uID, (LPARAM)downMsg);
-        PostMessage(icon.ownerHwnd, icon.uCallbackMessage, (WPARAM)icon.uID, (LPARAM)mouseMsg);
-        if (isRightClick) {
-            POINT pt; GetCursorPos(&pt);
-            PostMessage(icon.ownerHwnd, icon.uCallbackMessage, (WPARAM)icon.uID, (LPARAM)WM_CONTEXTMENU);
-            SetForegroundWindow(icon.ownerHwnd);
-            PostMessage(icon.ownerHwnd, WM_CONTEXTMENU, (WPARAM)icon.ownerHwnd, MAKELPARAM(pt.x, pt.y));
+    void SetIconChangeCallback(std::function<void()> callback) {
+        onIconsChanged = callback;
+    }
+
+    void NotifyIconsChanged() {
+        if (onIconsChanged) onIconsChanged();
+    }
+
+    void SendLeftClick(const TrayIconData &icon)
+    {
+        SendTrayMessage(icon, WM_MOUSEMOVE, false);
+        SendTrayMessage(icon, WM_LBUTTONDOWN, false);
+        SendTrayMessage(icon, WM_LBUTTONUP, false);
+
+        // Select (Vista+): Tells the app "The user focused this icon"
+        SendTrayMessage(icon, NIN_SELECT, false);
+    }
+
+    void SendDoubleClick(const TrayIconData &icon)
+    {
+        SendTrayMessage(icon, WM_LBUTTONDBLCLK, true);
+        SendTrayMessage(icon, WM_LBUTTONUP, true);
+        SendTrayMessage(icon, NIN_KEYSELECT, true);
+    }
+
+    void SendTrayMessage(const TrayIconData &icon, UINT message, bool forceFocus)
+    {
+        if (!IsWindow(icon.ownerHwnd) || icon.uCallbackMessage == 0) return;
+
+        WPARAM wParam;
+        LPARAM lParam;
+        POINT pt; GetCursorPos(&pt);
+
+        if (icon.uVersion >= 4) {
+            // VERSION 4 BEHAVIOR:
+            // wParam:  Screen Coordinates (X | Y)
+            // lParam:  LOWORD = Message ID (e.g. WM_CONTEXTMENU)
+            //          HIWORD = Icon ID
+            wParam = MAKEWPARAM(pt.x, pt.y);
+            lParam = MAKELPARAM(message, (WORD)icon.uID);
         }
+        else {
+            // LEGACY BEHAVIOR:
+            // wParam:  Icon ID
+            // lParam:  Message ID (or Mouse Coordinates in rare ancient cases)
+            wParam = icon.uID;
+            lParam = message;
+        }
+
+        if (forceFocus) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(icon.ownerHwnd, &pid);
+            AllowSetForegroundWindow(pid);
+            SetForegroundWindow(icon.ownerHwnd);
+        }
+
+        PostMessage(icon.ownerHwnd, icon.uCallbackMessage, wParam, lParam);
+    }
+
+    void SendRightClick(const TrayIconData &icon)
+    {
+        SendTrayMessage(icon, WM_RBUTTONDOWN, true);
+        SendTrayMessage(icon, WM_RBUTTONUP, true);
+        SendTrayMessage(icon, WM_CONTEXTMENU, true);
+        // Only needed for V4, but safe to send to legacy usually.
+        if (icon.uVersion >= 4)
+            SendTrayMessage(icon, NIN_POPUPOPEN, true);
     }
 };

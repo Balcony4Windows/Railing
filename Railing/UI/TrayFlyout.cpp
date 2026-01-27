@@ -9,6 +9,8 @@
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
 
+#define WM_TRAY_REFRESH (WM_USER + 102)
+
 ID2D1Bitmap *CreateBitmapFromIcon(ID2D1RenderTarget *rt, IWICImagingFactory *pWIC, HICON hIcon) {
     if (!hIcon || !rt || !pWIC) return nullptr;
 
@@ -47,13 +49,14 @@ TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImaging
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInst;
     wc.lpszClassName = L"TrayFlyoutClass";
+	wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     RegisterClass(&wc);
 
     hwnd = CreateWindowEx(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
         L"TrayFlyoutClass", L"Tray",
-        WS_POPUP, 0, 0, 200, 100,
+        WS_POPUP, 0, 0, 400, 200,
         nullptr, nullptr, hInst, this
     );
 
@@ -66,6 +69,12 @@ TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImaging
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 
     SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+
+    TrayBackend::Get().SetIconChangeCallback([&]() {
+        if (this->hwnd && IsWindow(this->hwnd)) {
+            PostMessage(this->hwnd, WM_TRAY_REFRESH, 0, 0);
+        }
+        });
 }
 
 TrayFlyout::~TrayFlyout() {
@@ -99,15 +108,12 @@ void TrayFlyout::Toggle(RECT iconRect) {
     else {
         // Fetch Data
         currentIcons = TrayBackend::Get().GetIcons();
-
-        // --- LAYOUT CONFIG ---
-        layoutIconSize = 24.0f; // Reset to standard size
-        layoutPadding = 10.0f;
+        UpdateLayout();
 
         // Dynamic Columns
-        if (currentIcons.size() <= 4) layoutCols = max(1, (int)currentIcons.size());
+        if (currentIcons.size() <= 5) layoutCols = max(1, (int)currentIcons.size());
         else if (currentIcons.size() <= 9) layoutCols = 3;
-        else layoutCols = 4;
+        else layoutCols = 5;
 
         int rows = 1;
         if (!currentIcons.empty()) {
@@ -203,6 +209,33 @@ void TrayFlyout::UpdateAnimation() {
     }
 }
 
+void TrayFlyout::UpdateLayout() {
+    int col = 0;
+    int row = 0;
+
+    // Ensure these are set correctly based on current icon count
+    if (currentIcons.size() <= 5) layoutCols = max(1, (int)currentIcons.size());
+    else if (currentIcons.size() <= 9) layoutCols = 3;
+    else layoutCols = 5;
+
+    for (auto &icon : currentIcons) {
+        float x = layoutPadding + (col * (layoutIconSize + layoutPadding));
+        float y = layoutPadding + (row * (layoutIconSize + layoutPadding));
+
+        // Store the hit-test coordinates immediately
+        icon.rect.left = (LONG)x;
+        icon.rect.top = (LONG)y;
+        icon.rect.right = (LONG)(x + layoutIconSize);
+        icon.rect.bottom = (LONG)(y + layoutIconSize);
+
+        col++;
+        if (col >= layoutCols) {
+            col = 0;
+            row++;
+        }
+    }
+}
+
 LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     TrayFlyout *self = (TrayFlyout *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     if (uMsg == WM_NCCREATE) {
@@ -228,11 +261,28 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
     case WM_LBUTTONUP:
         if (self) self->OnClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), false);
         return 0;
+    case WM_LBUTTONDBLCLK: {
+        int x = GET_X_LPARAM(lParam);
+        int y = GET_Y_LPARAM(lParam);
+        for (const auto &icon : self->currentIcons) {
+            if (x >= icon.rect.left && x < icon.rect.right &&
+                y >= icon.rect.top && y < icon.rect.bottom)
+            {
+                TrayBackend::Get().SendDoubleClick(icon);
+                return 0;
+            }
+        }
+        return 0;
+    }
     case WM_RBUTTONUP:
         if (self) self->OnClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), true);
         return 0;
     case WM_ACTIVATE:
         if (LOWORD(wParam) == WA_INACTIVE && self && self->animState != AnimationState::Hidden) {
+            if (self->ignoreNextDeactivate) { // Inside an icon
+                self->ignoreNextDeactivate = false;
+                return 0;
+            }
             if (self->animState != AnimationState::Exiting) {
                 self->lastAutoCloseTime = GetTickCount64();
 
@@ -248,6 +298,19 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
                     self->cachedBitmaps.clear();
                 }
             }
+        }
+        return 0;
+    case WM_NCHITTEST: {
+        LRESULT hit = DefWindowProc(hwnd, uMsg, wParam, lParam);
+        if (hit == HTNOWHERE || hit == HTCAPTION) return HTCLIENT;
+        return hit;
+    }
+    case WM_TRAY_REFRESH:
+        if (self && self->animState == AnimationState::Visible) {
+            self->currentIcons = TrayBackend::Get().GetIcons();
+            self->UpdateLayout();
+            self->UpdateBitmapCache();
+            InvalidateRect(hwnd, NULL , FALSE);
         }
         return 0;
     }
@@ -421,21 +484,28 @@ void TrayFlyout::OnClick(int x, int y, bool isRightClick) {
         if (x >= icon.rect.left && x <= icon.rect.right &&
             y >= icon.rect.top && y <= icon.rect.bottom) {
 
-            // 1. Send the actual click event to the app
-            TrayBackend::Get().SendClick(icon, isRightClick);
-
-            // 2. Close the flyout
-            if (style.animation.enabled) {
-                animState = AnimationState::Exiting;
-                lastAnimTime = GetTickCount64();
-                InvalidateRect(hwnd, NULL, FALSE);
+            if (isRightClick) {
+                ignoreNextDeactivate = true;
+                TrayBackend::Get().SendRightClick(icon);
             }
             else {
-                animState = AnimationState::Hidden;
-                ShowWindow(hwnd, SW_HIDE);
-                for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-                cachedBitmaps.clear();
+                ignoreNextDeactivate = false;
+                TrayBackend::Get().SendLeftClick(icon);
             }
+            break;
+        }
+    }
+}
+
+void TrayFlyout::OnDoubleClick(int x, int y) {
+    for (const auto &icon : currentIcons) {
+        if (x >= icon.rect.left && x <= icon.rect.right &&
+            y >= icon.rect.top && y <= icon.rect.bottom) {
+
+            TrayBackend::Get().SendDoubleClick(icon);
+
+            // Optional: Close flyout on double click?
+            // ShowWindow(hwnd, SW_HIDE); 
             break;
         }
     }
