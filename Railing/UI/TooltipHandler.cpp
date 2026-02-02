@@ -1,6 +1,9 @@
 #include "TooltipHandler.h"
 
 LRESULT CALLBACK TooltipWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    static bool tracking = false;
+	TooltipHandler *handler = reinterpret_cast<TooltipHandler *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    
     if (uMsg == WM_PAINT) {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
@@ -40,7 +43,18 @@ LRESULT CALLBACK TooltipWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         EndPaint(hwnd, &ps);
         return 0;
     }
-    if (uMsg == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
+    else if (uMsg == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
+    else if (uMsg == WM_MOUSEMOVE) {
+        if (!tracking) {
+            TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+            TrackMouseEvent(&tme);
+            tracking = true;
+        }
+    }
+    else if (uMsg == WM_MOUSELEAVE) {
+        tracking = false;
+        if (handler) handler->Hide();
+    }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
@@ -67,6 +81,7 @@ void TooltipHandler::Initialize(HWND hParent) {
         0, 0, 0, 0,
         NULL, NULL, wc.hInstance, NULL
     );
+    SetWindowLongPtr(hwndTooltip, GWLP_USERDATA, (LONG_PTR)this);
 
 	SetLayeredWindowAttributes(hwndTooltip, 0, 255, LWA_ALPHA);
 }

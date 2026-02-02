@@ -2,14 +2,23 @@
 #include <dwmapi.h>
 #include <Psapi.h>
 #include <algorithm>
+#include <cwctype>
+#include <cctype>
 
 #pragma comment(lib, "dwmapi.lib")
+
+size_t CalculatePathHash(const std::wstring &path) {
+    std::wstring lower = path;
+    std::transform(lower.begin(), lower.end(), lower.begin(), std::towlower);
+    return std::hash<std::wstring>{}(lower);
+}
 
 void WindowMonitor::GetTopLevelWindows(std::vector<WindowInfo> &outWindows, const std::vector<std::wstring> &pinnedApps, HWND ignoreBar)
 {
     struct EnumData { std::vector<WindowInfo> *list; HWND bar; };
 
     std::vector<WindowInfo> running;
+    running.reserve(64); // Prevent reallocations
     EnumData data = { &running, ignoreBar };
 
     EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
@@ -18,6 +27,7 @@ void WindowMonitor::GetTopLevelWindows(std::vector<WindowInfo> &outWindows, cons
             wchar_t title[256];
             GetWindowText(hwnd, title, 256);
             std::wstring exe = WindowMonitor::GetWindowExePath(hwnd);
+            size_t hash = CalculatePathHash(exe);
 
             RECT r; GetWindowRect(hwnd, &r);
             ctx->list->push_back({ hwnd, title, r, exe, false });
@@ -26,8 +36,10 @@ void WindowMonitor::GetTopLevelWindows(std::vector<WindowInfo> &outWindows, cons
         }, (LPARAM)&data);
 
     std::vector<WindowInfo> final; // Merge pinned
+    final.reserve(pinnedApps.size() + running.size());
     for (const auto &pin : pinnedApps) {
-        auto it = std::find_if(running.begin(), running.end(), [&](const WindowInfo &w) { return w.exePath == pin; });
+        size_t pinHash = CalculatePathHash(pin);
+        auto it = std::find_if(running.begin(), running.end(), [&](const WindowInfo &w) { return w.pathHash == pinHash; });
         if (it != running.end()) {
             it->isPinned = true;
             final.push_back(*it);

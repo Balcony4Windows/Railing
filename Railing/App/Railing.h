@@ -26,10 +26,6 @@ class InputManager;
 #define CMD_SWITCH_WORKSPACE 1
 #define CMD_RELOAD_CONFIG 2
 
-void RegisterAppBar(HWND hwnd);
-void UnregisterAppBar(HWND hwnd);
-void UpdateAppBarPosition(HWND hwnd);
-
 class VolumeFlyout;
 class RailingRenderer;
 
@@ -132,6 +128,8 @@ private:
 	inline ULONGLONG GetInterval(std::string type, int def);
 
 	HWINEVENTHOOK titleHook = nullptr;
+	HWINEVENTHOOK focusHook = nullptr;
+	HWINEVENTHOOK windowLifecycleHook = nullptr;
 	UINT shellMsgId = 0;
 	std::vector <WindowInfo> windows;
 
@@ -151,7 +149,7 @@ private:
 	bool isHidden = false;
 	bool isHoveringBar = false;
 	float showProgress = 1.0f;
-	ULONGLONG lastInteractionTime = 0;
+	ULONGLONG lastInteractionTime = 0;    
 	bool IsMouseAtEdge();
 
 	HWND hwndTooltip = nullptr;

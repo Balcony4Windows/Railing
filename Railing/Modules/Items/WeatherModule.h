@@ -42,7 +42,7 @@ class WeatherModule : public Module {
         if (code == 0)
             return (const char *)(isNight ? u8"🌙" : u8"☀️");
         else if (code == 1 || code == 2 || code == 3)
-            return (const char *)(isNight ? u8"🌙☁️" : u8"⛅");
+            return (const char *)(isNight ? u8"☁️" : u8"⛅");
         else if (code == 45 || code == 48) return (const char *)u8"🌫️";
         else if (code >= 51 && code <= 55) return (const char *)u8"🌧️";
         else if (code >= 61 && code <= 65) return (const char *)u8"🌧️";

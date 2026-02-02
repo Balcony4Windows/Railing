@@ -364,7 +364,6 @@ void NetworkFlyout::CreateDeviceResources() {
         }
     }
 }
-
 void NetworkFlyout::Draw() {
     UpdateAnimation();
     if (animState == AnimationState::Hidden) return;
@@ -495,58 +494,76 @@ void NetworkFlyout::Draw() {
                     pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, currentAlpha));
                     pRenderTarget->DrawTextW(L"\uE946", 1, pIconFormat, infoRect, pTextBrush);
 
-                    D2D1_RECT_F boxRect = D2D1::RectF(infoRect.right + 10, contentY, rowRect.right - 90, contentY + 35);
+                    // NEW: Only show password field if network is secured
+                    if (net.isSecure) {
+                        D2D1_RECT_F boxRect = D2D1::RectF(infoRect.right + 10, contentY, rowRect.right - 90, contentY + 35);
 
-                    pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f * currentAlpha));
-                    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(boxRect, 4, 4), pBgBrush);
-                    pBorderBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.3f * currentAlpha));
-                    pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(boxRect, 4, 4), pBorderBrush, 1.0f);
+                        pBgBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f * currentAlpha));
+                        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(boxRect, 4, 4), pBgBrush);
+                        pBorderBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.3f * currentAlpha));
+                        pRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(boxRect, 4, 4), pBorderBrush, 1.0f);
 
-                    if (!pInputLayout) UpdateInputLayout(boxRect.right - boxRect.left - 10);
+                        if (!pInputLayout) UpdateInputLayout(boxRect.right - boxRect.left - 10);
 
-                    D2D1_POINT_2F textOrigin = D2D1::Point2F(boxRect.left + 5, boxRect.top);
+                        D2D1_POINT_2F textOrigin = D2D1::Point2F(boxRect.left + 5, boxRect.top);
 
-                    if (pInputLayout && !isWorking) {
-                        if (passwordBuffer.empty()) pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.4f));
-                        else pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f));
-                        pRenderTarget->DrawTextLayout(textOrigin, pInputLayout, pTextBrush);
-                    }
-
-                    if (!passwordBuffer.empty() && pInputLayout && !isWorking) {
-                        int selStart = min(selectionAnchor, selectionFocus);
-                        int selLen = abs(selectionAnchor - selectionFocus);
-                        if (selLen > 0) {
-                            DWRITE_HIT_TEST_METRICS metrics[32];
-                            UINT32 count = 0;
-                            pInputLayout->HitTestTextRange(selStart, selLen, 0, 0, metrics, 32, &count);
-                            pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::DodgerBlue, 0.5f * currentAlpha));
-                            for (UINT32 m = 0; m < count; m++) {
-                                D2D1_RECT_F highlight = D2D1::RectF(
-                                    textOrigin.x + metrics[m].left, textOrigin.y + metrics[m].top,
-                                    textOrigin.x + metrics[m].left + metrics[m].width, textOrigin.y + metrics[m].top + metrics[m].height
-                                );
-                                pRenderTarget->FillRectangle(highlight, pBgBrush);
+                        if (pInputLayout && !isWorking) {
+                            if (passwordBuffer.empty()) {
+                                pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.4f * currentAlpha));
+                                std::wstring placeholder = L"Password";
+                                pRenderTarget->DrawTextW(placeholder.c_str(), (UINT32)placeholder.length(), pTextFormat, boxRect, pTextBrush);
+                            }
+                            else {
+                                pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f * currentAlpha));
+                                pRenderTarget->DrawTextLayout(textOrigin, pInputLayout, pTextBrush);
                             }
                         }
 
-                        float caretX, caretY;
-                        DWRITE_HIT_TEST_METRICS cm;
-                        pInputLayout->HitTestTextPosition(selectionFocus, FALSE, &caretX, &caretY, &cm);
-                        float finalX = textOrigin.x + caretX;
-                        float finalY = textOrigin.y + caretY;
-                        float lineCenter = finalY + (cm.height / 2.0f);
-                        pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f));
-                        pRenderTarget->DrawLine(D2D1::Point2F(finalX, lineCenter - 8), D2D1::Point2F(finalX, lineCenter + 8), pTextBrush, 1.0f);
-                    }
+                        // Selection and caret drawing (same as before)
+                        if (!passwordBuffer.empty() && pInputLayout && !isWorking) {
+                            int selStart = min(selectionAnchor, selectionFocus);
+                            int selLen = abs(selectionAnchor - selectionFocus);
+                            if (selLen > 0) {
+                                DWRITE_HIT_TEST_METRICS metrics[32];
+                                UINT32 count = 0;
+                                pInputLayout->HitTestTextRange(selStart, selLen, 0, 0, metrics, 32, &count);
+                                pBgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::DodgerBlue, 0.5f * currentAlpha));
+                                for (UINT32 m = 0; m < count; m++) {
+                                    D2D1_RECT_F highlight = D2D1::RectF(
+                                        textOrigin.x + metrics[m].left, textOrigin.y + metrics[m].top,
+                                        textOrigin.x + metrics[m].left + metrics[m].width, textOrigin.y + metrics[m].top + metrics[m].height
+                                    );
+                                    pRenderTarget->FillRectangle(highlight, pBgBrush);
+                                }
+                            }
 
-                    D2D1_RECT_F btnRect = D2D1::RectF(rowRect.right - 85, contentY, rowRect.right - 10, contentY + 35);
-                    float btnAlpha = isWorking ? 0.4f : 0.8f;
-                    D2D1_COLOR_F btnColor = theme.global.highlights;
-                    btnColor.a *= (btnAlpha * currentAlpha);
-                    pBgBrush->SetColor(btnColor);
-                    pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(btnRect, 4, 4), pBgBrush);
-                    pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, currentAlpha));
-                    pRenderTarget->DrawTextW(isWorking ? L"..." : L"Go", 3, pTextFormat, btnRect, pTextBrush);
+                            float caretX, caretY;
+                            DWRITE_HIT_TEST_METRICS cm;
+                            pInputLayout->HitTestTextPosition(selectionFocus, FALSE, &caretX, &caretY, &cm);
+                            float finalX = textOrigin.x + caretX;
+                            float finalY = textOrigin.y + caretY;
+                            float lineCenter = finalY + (cm.height / 2.0f);
+                            pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 1.0f));
+                            pRenderTarget->DrawLine(D2D1::Point2F(finalX, lineCenter - 8), D2D1::Point2F(finalX, lineCenter + 8), pTextBrush, 1.0f);
+                        }
+
+                        D2D1_RECT_F btnRect = D2D1::RectF(rowRect.right - 85, contentY, rowRect.right - 10, contentY + 35);
+                        float btnAlpha = isWorking ? 0.4f : 0.8f;
+                        D2D1_COLOR_F btnColor = theme.global.highlights;
+                        btnColor.a *= (btnAlpha * currentAlpha);
+                        pBgBrush->SetColor(btnColor);
+                        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(btnRect, 4, 4), pBgBrush);
+                        pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, currentAlpha));
+                        pRenderTarget->DrawTextW(isWorking ? L"..." : L"Go", 3, pTextFormat, btnRect, pTextBrush);
+                    }
+                    else {
+                        // NEW: Show "Open Network" message for unsecured networks
+                        D2D1_RECT_F msgRect = D2D1::RectF(infoRect.right + 10, contentY, rowRect.right - 10, contentY + 35);
+                        pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.6f * currentAlpha));
+                        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+                        pRenderTarget->DrawTextW(L"Open Network - Click to connect", 31, pTextFormat, msgRect, pTextBrush);
+                        pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+                    }
                 }
 
                 if (!statusMessage.empty()) {
@@ -710,6 +727,15 @@ void NetworkFlyout::OnClick(int x, int y) {
 
                     if (lx >= startX && lx <= startX + btnWidth && ly >= contentY && ly <= contentY + 35) {
                         backend.Disconnect();
+                        std::thread([this]() {
+                            Sleep(1000); // Give it a moment to disconnect
+                            auto nets = backend.ScanNetworks();
+                            {
+                                std::lock_guard<std::recursive_mutex> lock(networkMutex);
+                                cachedNetworks = nets;
+                            }
+                            if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+                            }).detach();
                         selectedIndex = -1;
                         InvalidateRect(hwnd, NULL, FALSE);
                         return;
@@ -724,31 +750,84 @@ void NetworkFlyout::OnClick(int x, int y) {
                 else {
                     float infoLeft = 5 + 15; // rowRect.left + 15
                     if (lx >= infoLeft && lx <= infoLeft + infoSize && ly >= contentY && ly <= contentY + infoSize) {
-                        ShellExecute(NULL, L"open", L"ms-settings:network-wifi", NULL, NULL, SW_SHOWNORMAL);
+                        std::wstring details = L"SSID: " + cachedNetworks[i].ssid + L"\n";
+                        details += L"Signal: " + std::to_wstring(cachedNetworks[i].signalQuality) + L"%\n";
+                        details += cachedNetworks[i].isSecure ? L"Security: Yes" : L"Security: Open";
+
+                        MessageBoxW(hwnd, details.c_str(), L"Network Details", MB_OK | MB_ICONINFORMATION);
                         return;
                     }
 
-                    if (lx > width - 85 && lx < width - 10 && ly >= contentY && ly <= contentY + 35) {
-                        if (isWorking) return;
-                        isWorking = true;
-                        statusMessage = L"Verifying...";
-                        statusColor = D2D1::ColorF(1, 1, 1, 0.7f);
-                        InvalidateRect(hwnd, NULL, FALSE);
+                    if (cachedNetworks[i].isSecure) {
+                        float boxLeft = infoLeft + infoSize + 10;
+                        D2D1_RECT_F boxRect = D2D1::RectF(boxLeft, contentY, width - 95, contentY + 35);
 
-                        std::thread([this, i]() {
-                            std::wstring passCopy = passwordBuffer;
-                            WifiNetwork netCopy = cachedNetworks[i];
-                            std::wstring result = backend.ConnectTo(netCopy, passCopy);
-                            {
-                                std::lock_guard<std::recursive_mutex> uiLock(networkMutex);
-                                statusMessage = result;
-                                if (result == L"Connected") statusColor = D2D1::ColorF(0.3f, 1.0f, 0.3f, 1.0f);
-                                else statusColor = D2D1::ColorF(1.0f, 0.3f, 0.3f, 1.0f);
-                                isWorking = false;
-                            }
-                            if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
-                            }).detach();
+                        if (lx >= boxRect.left && lx <= boxRect.right && ly >= boxRect.top && ly <= boxRect.bottom) {
+                            isSelectingText = true;
+                            int idx = GetInputCaretFromPoint(lx, ly, boxRect.left + 5, boxRect.top);
+                            selectionAnchor = idx;
+                            selectionFocus = idx;
+                            InvalidateRect(hwnd, NULL, FALSE);
+                            return;
+                        }
+
+                        if (lx > width - 85 && lx < width - 10 && ly >= contentY && ly <= contentY + 35) {
+                            if (isWorking) return;
+                            isWorking = true;
+                            statusMessage = L"Verifying...";
+                            statusColor = D2D1::ColorF(1, 1, 1, 0.7f);
+                            InvalidateRect(hwnd, NULL, FALSE);
+
+                            std::thread([this, i]() {
+                                std::wstring passCopy = passwordBuffer;
+                                WifiNetwork netCopy = cachedNetworks[i];
+                                std::wstring result = backend.ConnectTo(netCopy, passCopy);
+                                {
+                                    std::lock_guard<std::recursive_mutex> uiLock(networkMutex);
+                                    statusMessage = result;
+                                    if (result == L"Connected!") {
+                                        statusColor = D2D1::ColorF(0.3f, 1.0f, 0.3f, 1.0f); // Green
+                                    }
+                                    else if (result == L"Verifying..." || result == L"Connecting...") {
+                                        statusColor = D2D1::ColorF(1, 1, 1, 0.7f); // White
+                                    }
+                                    else if (result == L"Invalid Password Format") {
+                                        statusColor = D2D1::ColorF(1.0f, 0.7f, 0.3f, 1.0f); // Orange
+                                    }
+                                    else {
+                                        statusColor = D2D1::ColorF(1.0f, 0.3f, 0.3f, 1.0f); // Red
+                                    }
+                                    isWorking = false;
+                                }
+                                if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+                                }).detach();
+                        }
                     }
+                    else {
+                        float msgLeft = infoLeft + infoSize + 10;
+                        if (lx >= msgLeft && lx <= width - 10 && ly >= contentY && ly <= contentY + 35) {
+                            if (isWorking) return;
+                            isWorking = true;
+                            statusMessage = L"Connecting...";
+                            statusColor = D2D1::ColorF(1, 1, 1, 0.7f);
+                            InvalidateRect(hwnd, NULL, FALSE);
+
+                            std::thread([this, i]() {
+                                WifiNetwork netCopy = cachedNetworks[i];
+                                std::wstring result = backend.ConnectTo(netCopy, L"");
+                                {
+                                    std::lock_guard<std::recursive_mutex> uiLock(networkMutex);
+                                    statusMessage = result;
+                                    if (result == L"Connected!") statusColor = D2D1::ColorF(0.3f, 1.0f, 0.3f, 1.0f);
+                                    else statusColor = D2D1::ColorF(1.0f, 0.3f, 0.3f, 1.0f);
+                                    isWorking = false;
+                                }
+                                if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+                                }).detach();
+                            return;
+                        }
+                    }
+                    
                 }
             }
             else {
@@ -757,6 +836,31 @@ void NetworkFlyout::OnClick(int x, int y) {
                 statusMessage = L"";
                 isWorking = false;
                 selectionAnchor = 0; selectionFocus = 0;
+
+                if (!cachedNetworks[i].isConnected && !cachedNetworks[i].isSecure) {
+                    isWorking = true;
+                    statusMessage = L"Connecting...";
+                    statusColor = D2D1::ColorF(1, 1, 1, 0.7f);
+
+                    std::thread([this, i]() {
+                        WifiNetwork netCopy = cachedNetworks[i];
+                        std::wstring result = backend.ConnectTo(netCopy, L"");
+                        {
+                            std::lock_guard<std::recursive_mutex> uiLock(networkMutex);
+                            statusMessage = result;
+                            if (result == L"Connected!") {
+                                statusColor = D2D1::ColorF(0.3f, 1.0f, 0.3f, 1.0f);
+
+                                if (Railing::instance && Railing::instance->hwndBar) {
+                                    SendMessage(Railing::instance->hwndBar, WM_USER + 999, 0, 0);
+                                }
+                            }
+                            else statusColor = D2D1::ColorF(1.0f, 0.3f, 0.3f, 1.0f);
+                            isWorking = false;
+                        }
+                        if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+                        }).detach();
+                }
                 PositionWindow(currentAnchor);
                 SetWindowPos(hwnd, NULL, targetX, targetY, (int)(width * scale), (int)(currentWindowHeight * scale), SWP_NOZORDER | SWP_NOACTIVATE);
                 if (pRenderTarget) pRenderTarget->Resize(D2D1::SizeU((int)(width * scale), (int)(currentWindowHeight * scale)));

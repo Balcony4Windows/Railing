@@ -1,4 +1,5 @@
 #pragma once
+#define NOMINMAX
 #include "Module.h"
 #include "WorkspaceManager.h"
 #include "PinnedAppsIO.h"
@@ -8,31 +9,52 @@
 #include <algorithm>
 #include <set>
 #include <cwctype>
-#include <PinnedAppsIO.h>
-
+#include "DockPreviewWindow.h"
 #pragma comment(lib, "version.lib")
+
+struct DockItem {
+    std::wstring exePath;
+    size_t pathHash;
+    bool isPinned = false;
+    std::wstring title;
+    std::vector<HWND> windows;
+};
 
 class DockModule : public Module {
     std::map<HWND, ID2D1Bitmap *> iconCache;
     std::map<size_t, ID2D1Bitmap *> pinnedIconCache;
     std::vector<PinnedAppEntry> m_pinnedApps;
 
-    ID2D1PathGeometry *pStarGeo = nullptr; /* Star symbol! Pinned apps */
-    std::set<HWND> attentionWindows; // For Shell hooks
-    std::vector<WindowInfo> stableList;
+    std::set<HWND> attentionWindows;
+    std::vector<DockItem> stableList;
 
+    ULONGLONG lastAnimTime = 0;
     float iconSize = 24.0f;
     float spacing = 8.0f;
     float animSpeed = 0.25f;
     float currentHighlightX = 0.0f;
     bool isHighlightInitialized = false;
+
     int cleanupCounter = 0;
-    int updateThrottle = 0;
+    int keepAliveFrames = 0; // NEW: Timer to keep loop alive after window close
 
     size_t GetPathHash(const std::wstring &path) {
         std::wstring lower = path;
         std::transform(lower.begin(), lower.end(), lower.begin(), std::towlower);
         return std::hash<std::wstring>{}(lower);
+    }
+
+    ID2D1Bitmap *GetItemIcon(RenderContext &ctx, const DockItem &item) {
+        if (pinnedIconCache.count(item.pathHash)) return pinnedIconCache[item.pathHash];
+        HWND hIconSource = item.windows.empty() ? NULL : item.windows[0];
+        if (hIconSource && iconCache.count(hIconSource)) return iconCache[hIconSource];
+
+        WindowInfo tempInfo = {};
+        tempInfo.hwnd = hIconSource;
+        tempInfo.exePath = item.exePath;
+        tempInfo.pathHash = item.pathHash;
+        tempInfo.isPinned = item.isPinned;
+        return GetOrLoadIcon(ctx, tempInfo);
     }
 
     std::pair<std::wstring, int> GetEffectiveIconPath(const WindowInfo &win) {
@@ -42,7 +64,6 @@ class DockModule : public Module {
         if (win.isPinned) {
             size_t h = GetPathHash(win.exePath);
             for (const auto &entry : m_pinnedApps) {
-                // Find matching pinned entry
                 if (GetPathHash(entry.path) == h && !entry.iconPath.empty()) {
                     path = entry.iconPath;
                     index = entry.iconIndex;
@@ -53,54 +74,22 @@ class DockModule : public Module {
         return { path, index };
     }
 
-    void CreateStarGeometry(ID2D1Factory *pFactory, float radius) {
-        if (pStarGeo) return;
-        pFactory->CreatePathGeometry(&pStarGeo);
-        ID2D1GeometrySink *pSink = nullptr;
-        if (SUCCEEDED(pStarGeo->Open(&pSink))) {
-            pSink->BeginFigure(D2D1::Point2F(0, -radius), D2D1_FIGURE_BEGIN_FILLED);
-
-            float inner = radius * 0.15f;
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(inner, -inner), D2D1::Point2F(radius, 0)));
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(inner, inner), D2D1::Point2F(0, radius)));
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(-inner, inner), D2D1::Point2F(-radius, 0)));
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(-inner, -inner), D2D1::Point2F(0, -radius)));
-            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-            pSink->Close();
-            pSink->Release();
-        }
-    }
-
     ID2D1Bitmap *GetOrLoadIcon(RenderContext &ctx, const WindowInfo &win) {
-        // Check Running Cache (Fastest)
         if (win.hwnd && iconCache.count(win.hwnd)) return iconCache[win.hwnd];
-
-        auto [loadPath, loadIndex] = GetEffectiveIconPath(win);
-
-        if (win.isPinned) {
-            size_t h = GetPathHash(win.exePath);
-            for (const auto &entry : m_pinnedApps) {
-                if (GetPathHash(entry.path) == h && !entry.iconPath.empty()) {
-                    loadPath = entry.iconPath;
-                    loadIndex = entry.iconIndex;
-                    break;
-                }
-            }
-        }
-
         size_t pathHash = GetPathHash(win.exePath);
         if (pinnedIconCache.count(pathHash)) {
             ID2D1Bitmap *existing = pinnedIconCache[pathHash];
             if (win.hwnd) {
                 existing->AddRef();
                 iconCache[win.hwnd] = existing;
-                return existing;
             }
             return existing;
         }
-        // Load from Disk (Expensive)
+
+        auto [loadPath, loadIndex] = GetEffectiveIconPath(win);
         HICON hIcon = NULL;
         bool shouldDestroy = false;
+
         if (!loadPath.empty()) {
             int targetSize = (int)iconSize;
             if (targetSize < 32) targetSize = 32; else if (targetSize < 48) targetSize = 48;
@@ -108,16 +97,15 @@ class DockModule : public Module {
             if (PrivateExtractIconsW(loadPath.c_str(), loadIndex, targetSize, targetSize, &hIcon, &id, 1, 0) > 0) {
                 if (hIcon) shouldDestroy = true;
             }
+            if (!hIcon && ExtractIconExW(loadPath.c_str(), 0, &hIcon, NULL, 1) > 0 && hIcon) {
+                shouldDestroy = true;
+            }
         }
 
         if (!hIcon && win.hwnd) {
             hIcon = (HICON)SendMessage(win.hwnd, WM_GETICON, ICON_BIG, 0);
             if (!hIcon) hIcon = (HICON)SendMessage(win.hwnd, WM_GETICON, ICON_SMALL, 0);
             if (!hIcon) hIcon = (HICON)GetClassLongPtr(win.hwnd, GCLP_HICON);
-        }
-
-        if (!hIcon && !loadPath.empty()) {
-            if (ExtractIconExW(loadPath.c_str(), 0, &hIcon, NULL, 1) > 0 && hIcon) shouldDestroy = true;
         }
         if (!hIcon) { hIcon = LoadIcon(NULL, IDI_APPLICATION); shouldDestroy = false; }
 
@@ -135,113 +123,141 @@ class DockModule : public Module {
         }
 
         if (shouldDestroy && hIcon) DestroyIcon(hIcon);
+
         if (win.hwnd) iconCache[win.hwnd] = bmp;
         else pinnedIconCache[pathHash] = bmp;
 
         return bmp;
     }
 
-    void UpdateStableList(RenderContext &ctx) {
-        if (!ctx.windows) return;
-        if (++updateThrottle < 4) return;
-        updateThrottle = 0;
-
-        std::map<HWND, const WindowInfo *> currentMap;
-        std::vector<const WindowInfo *> zOrderList;
-        zOrderList.reserve(ctx.windows->size());
-
-        for (const auto &w : *ctx.windows) {
-            if (!IsWindowVisible(w.hwnd)) continue;
-            RECT r; GetWindowRect(w.hwnd, &r);
-            if ((r.right - r.left) < 20) continue;
-
-            currentMap[w.hwnd] = &w;
-            zOrderList.push_back(&w);
-        }
-
-        std::vector<WindowInfo> nextList;
-        nextList.reserve(m_pinnedApps.size() + zOrderList.size());
-        std::set<HWND> processedHwnds;
-
-        // PHASE A: Pinned Apps
-        for (PinnedAppEntry &entry : m_pinnedApps) {
-            WindowInfo item = {};
-            item.exePath = entry.path;
-            item.isPinned = true;
-            item.hwnd = NULL;
-            size_t pathHash = GetPathHash(entry.path);
-
-            bool foundStable = false;
-            for (const auto &old : stableList) {
-                if (old.isPinned && old.exePath == entry.path && old.hwnd && currentMap.count(old.hwnd)) {
-                    if (GetPathHash(old.exePath) == pathHash) {
-                        item.hwnd = old.hwnd;
-                        item.title = currentMap[old.hwnd]->title;
-                        foundStable = true;
-                        break;
+    bool PruneDeadWindows(HWND hwnd = NULL) {
+        bool changed = false;
+        for (auto &item : stableList) {
+            auto it = item.windows.begin();
+            while (it != item.windows.end()) {
+                HWND h = *it;
+                if (!IsWindow(h)) {
+                    if (h == optimisticHwnd) {
+                        optimisticHwnd = NULL;
+                        optimisticTime = 0;
                     }
+                    it = item.windows.erase(it);
+                    changed = true;
                 }
-            }
-            if (!foundStable) {
-                for (auto *curr : zOrderList) {
-                    if (GetPathHash(curr->exePath) == pathHash) {
-                        item.hwnd = curr->hwnd;
-                        item.title = curr->title;
-                        break;
-                    }
-                }
-            }
-
-            if (item.hwnd) processedHwnds.insert(item.hwnd);
-            nextList.push_back(item);
-        }
-
-        // 3. PHASE B: Unpinned Apps (Preserve Old Order)
-        for (const auto &old : stableList) {
-            if (!old.isPinned && old.hwnd && currentMap.count(old.hwnd)) {
-                if (processedHwnds.find(old.hwnd) == processedHwnds.end()) {
-                    WindowInfo fresh = *currentMap[old.hwnd];
-                    fresh.isPinned = false;
-                    nextList.push_back(fresh);
-                    processedHwnds.insert(old.hwnd);
+                else {
+                    ++it;
                 }
             }
         }
 
-        // 4. PHASE C: New Arrivals
-        for (auto *curr : zOrderList) {
-            if (processedHwnds.find(curr->hwnd) == processedHwnds.end()) {
-                WindowInfo newItem = *curr;
-                newItem.isPinned = false;
-                nextList.push_back(newItem);
-                processedHwnds.insert(newItem.hwnd);
+        if (changed) {
+            isDirty = true;
+            if (hwnd) {
+                InvalidateRect(hwnd, NULL, FALSE);
             }
         }
-        stableList = nextList; // Commit
+        return changed;
     }
 
-    void FillHiddenWindowInfo(WindowInfo &info) {
-        if (!IsWindow(info.hwnd)) return;
+    void UpdateStableList(RenderContext &ctx) {
+        if (!isDirty && !optimisticHwnd) return;
+        if (!ctx.windows) return;
 
-        wchar_t titleBuf[256];
-        if (GetWindowTextW(info.hwnd, titleBuf, 256) > 0) {
-            info.title = titleBuf;
-        }
+        isDirty = false;
+        std::vector<const WindowInfo *> zOrderList;
 
-        DWORD pid;
-        GetWindowThreadProcessId(info.hwnd, &pid);
-        HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (hProcess) {
-            wchar_t path[MAX_PATH];
-            DWORD size = MAX_PATH;
-            if (QueryFullProcessImageNameW(hProcess, 0, path, &size)) {
-                info.exePath = path;
+        for (const auto &w : *ctx.windows) {
+            if (IsWindow(w.hwnd)) {
+                if (IsWindowVisible(w.hwnd) || w.hwnd == optimisticHwnd) {
+                    RECT r; GetWindowRect(w.hwnd, &r);
+                    if ((r.right - r.left) >= 20) zOrderList.push_back(&w);
+                }
             }
-            CloseHandle(hProcess);
         }
+
+        std::map<size_t, std::vector<HWND>> liveWindows;
+        std::map<size_t, std::wstring> titles;
+
+        for (const auto *win : zOrderList) {
+            size_t h = (win->pathHash != 0) ? win->pathHash : GetPathHash(win->exePath);
+            liveWindows[h].push_back(win->hwnd);
+            if (titles[h].empty()) titles[h] = win->title;
+        }
+
+        std::vector<DockItem> newList;
+        std::set<size_t> processedHashes;
+
+        for (const auto &oldItem : stableList) {
+            size_t h = oldItem.pathHash;
+            bool isPinned = IsPinned(oldItem.exePath);
+            bool hasWindows = liveWindows.count(h);
+
+            if (isPinned || hasWindows) {
+                DockItem item = oldItem;
+                item.isPinned = isPinned;
+                if (hasWindows) item.title = titles[h];
+
+                std::vector<HWND> mergedWindows;
+                const auto &currentLive = liveWindows[h];
+
+                for (HWND oldHwnd : oldItem.windows) {
+                    if (std::find(currentLive.begin(), currentLive.end(), oldHwnd) != currentLive.end()) {
+                        mergedWindows.push_back(oldHwnd);
+                    }
+                }
+                for (HWND liveHwnd : currentLive) {
+                    bool alreadyHas = false;
+                    for (HWND existing : mergedWindows) {
+                        if (existing == liveHwnd) { alreadyHas = true; break; }
+                    }
+                    if (!alreadyHas) mergedWindows.push_back(liveHwnd);
+                }
+
+                item.windows = mergedWindows;
+                newList.push_back(item);
+                processedHashes.insert(h);
+            }
+        }
+
+        for (const auto *win : zOrderList) {
+            size_t h = (win->pathHash != 0) ? win->pathHash : GetPathHash(win->exePath);
+
+            if (processedHashes.find(h) == processedHashes.end()) {
+                DockItem newItem = {};
+                newItem.exePath = win->exePath;
+                newItem.pathHash = h;
+                newItem.isPinned = false;
+                newItem.title = win->title;
+                newItem.windows = liveWindows[h];
+
+                newList.push_back(newItem);
+                processedHashes.insert(h);
+            }
+        }
+
+        for (PinnedAppEntry &entry : m_pinnedApps) {
+            size_t h = GetPathHash(entry.path);
+            if (processedHashes.find(h) == processedHashes.end()) {
+                DockItem item = {};
+                item.exePath = entry.path;
+                item.pathHash = h;
+                item.isPinned = true;
+                item.title = entry.name;
+                newList.push_back(item);
+                processedHashes.insert(h);
+            }
+        }
+
+        stableList = newList;
     }
 
 public:
+    DockPreviewWindow *m_previewWin = nullptr;
+    bool suppressPreview = false;
+
+    HWND optimisticHwnd = NULL;
+    ULONGLONG optimisticTime = 0;
+
     DockModule(const ModuleConfig &cfg) : Module(cfg) {
         if (cfg.dockIconSize > 0) this->iconSize = cfg.dockIconSize;
         if (cfg.dockSpacing > 0) this->spacing = cfg.dockSpacing;
@@ -250,11 +266,17 @@ public:
         m_pinnedApps = PinnedAppsIO::Load();
     }
 
-
     ~DockModule() {
         for (auto &[k, v] : iconCache) if (v) v->Release();
-        if (pStarGeo) pStarGeo->Release();
     }
+
+    void SetOptimisticFocus(HWND hwnd) {
+        optimisticHwnd = hwnd;
+        optimisticTime = GetTickCount64();
+    }
+
+    bool isDirty = true;
+    void MarkDirty() { isDirty = true; }
 
     void PinApp(std::wstring path, std::wstring name = L"", std::wstring iconPath = L"", int iconIndex = 0) {
         for (PinnedAppEntry &app : m_pinnedApps) {
@@ -281,8 +303,55 @@ public:
         return false;
     }
 
+    bool useThumbnails = false;
+    struct PreviewState {
+        bool active = false;
+        int groupIndex = -1;
+        D2D1_RECT_F bounds = {};
+        int hoveredRowIndex = -1;
+        int spawnFrames = 0;
+        RECT lastIconRect = {};
+    } previewState;
+
+    int GetWindowCountAtIndex(int index) {
+        if (index >= 0 && index < stableList.size()) {
+            return (int)stableList[index].windows.size();
+        }
+        return 0;
+    }
+
+    bool IsMouseInPreviewOrGap() {
+        if (!m_previewWin) return false;
+
+        POINT cursor; GetCursorPos(&cursor);
+        RECT winRect;
+        if (!GetWindowRect(m_previewWin->GetHwnd(), &winRect)) return false;
+
+        if (PtInRect(&winRect, cursor)) return true;
+        if (PtInRect(&previewState.lastIconRect, cursor)) return true;
+
+        RECT gapRect;
+        gapRect.left = std::min<LONG>(winRect.left, previewState.lastIconRect.left) - 20;
+        gapRect.right = std::max<LONG>(winRect.right, previewState.lastIconRect.right) + 20;
+        gapRect.top = std::min<LONG>(winRect.bottom, previewState.lastIconRect.top);
+        gapRect.bottom = std::max<LONG>(winRect.top, previewState.lastIconRect.bottom);
+
+        gapRect.top -= 10;
+        gapRect.bottom += 10;
+
+        if (PtInRect(&gapRect, cursor)) return true;
+        return false;
+    }
+
     float GetContentWidth(RenderContext &ctx) override {
-        UpdateStableList(ctx); // Sync Data
+        if (optimisticHwnd && !IsWindow(optimisticHwnd)) {
+            optimisticHwnd = NULL;
+            optimisticTime = 0;
+            isDirty = true;
+        }
+
+        PruneDeadWindows(ctx.hwnd);
+        UpdateStableList(ctx);
 
         size_t count = stableList.size();
         if (count == 0) return 0.0f;
@@ -293,6 +362,17 @@ public:
     }
 
     void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override {
+        if (!m_previewWin && ctx.factory && ctx.writeFactory)
+            m_previewWin = new DockPreviewWindow(ctx.factory, ctx.writeFactory, ctx.wicFactory);
+
+        if (optimisticHwnd && !IsWindow(optimisticHwnd)) {
+            optimisticHwnd = NULL;
+            optimisticTime = 0;
+            isDirty = true;
+        }
+
+        PruneDeadWindows(ctx.hwnd);
+        UpdateStableList(ctx);
         if (stableList.empty()) return;
 
         Style containerStyle = GetEffectiveStyle();
@@ -317,30 +397,48 @@ public:
         float startX = x + containerStyle.margin.left + ((bgWidth - totalWidth) / 2.0f);
         float availableH = h - containerStyle.margin.top - containerStyle.margin.bottom;
         float drawY = y + containerStyle.margin.top + ((availableH - iconSize) / 2.0f);
+
         float targetX = -1.0f;
         float searchCursor = startX;
 
-        if (!pStarGeo && ctx.factory) CreateStarGeometry(ctx.factory, 6.0f);
+        HWND activeWin = (optimisticHwnd && (GetTickCount64() - optimisticTime < 500)) ? optimisticHwnd : ctx.foregroundWindow;
+        const DockItem *activeItem = nullptr;
 
-        for (const auto &win : stableList) {
-            if (win.hwnd == ctx.foregroundWindow) {
+        for (const auto &item : stableList) {
+            bool isGroupActive = false;
+            for (HWND hw : item.windows) {
+                if (hw == activeWin) {
+                    isGroupActive = true; break;
+                }
+            }
+            if (isGroupActive) {
                 targetX = searchCursor;
+                activeItem = &item;
                 break;
             }
             searchCursor += (itemBoxWidth + itemSpacing);
         }
 
         if (targetX >= 0.0f) {
+            ULONGLONG now = GetTickCount64();
+
             if (!isHighlightInitialized) {
                 currentHighlightX = targetX;
                 isHighlightInitialized = true;
             }
             else {
+                float dt = (float)(now - lastAnimTime) / 1000.0f;
+                if (dt > 0.1f) dt = 0.016f;
+                float damping = 1.0f - std::pow(0.01f, dt * (animSpeed * 10.0f));
+
                 float diff = targetX - currentHighlightX;
-                currentHighlightX += diff * animSpeed;
-                if (abs(diff) < 0.5f) currentHighlightX = targetX;
+                currentHighlightX += diff * damping;
+                if (abs(diff) < 0.5f) {
+                    currentHighlightX = targetX;
+                }
                 else InvalidateRect(ctx.hwnd, NULL, FALSE);
             }
+            lastAnimTime = now;
 
             D2D1_COLOR_F activeColor = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f);
             if (config.states.count("active")) {
@@ -349,97 +447,169 @@ public:
                 else if (s.has_bg) activeColor = s.bg;
             }
 
-            // Draw Indicator Dot/Bar
-            float indW = 16.0f;
-            float indH = 3.0f;
-            float centerX = currentHighlightX + (itemBoxWidth / 2.0f);
-            float bottomY = drawY + iconSize + 6.0f;
+            float barWidth = 16.0f;
+            if (activeItem && activeItem->windows.size() > 1) barWidth = 28.0f;
 
             D2D1_ROUNDED_RECT activeRect = D2D1::RoundedRect(
-                D2D1::RectF(centerX - (indW / 2), bottomY, centerX + (indW / 2), bottomY + indH),
-                2, 2
-            );
+                D2D1::RectF(currentHighlightX + (itemBoxWidth / 2) - (barWidth / 2), drawY + iconSize + 6,
+                    currentHighlightX + (itemBoxWidth / 2) + (barWidth / 2), drawY + iconSize + 9), 2, 2);
 
             ctx.bgBrush->SetColor(activeColor);
             ctx.rt->FillRoundedRectangle(activeRect, ctx.bgBrush);
         }
+        else {
+            isHighlightInitialized = false;
+            if (optimisticHwnd) InvalidateRect(ctx.hwnd, NULL, FALSE);
+        }
 
         float drawCursor = startX;
-        for (const auto &win : stableList) {
-            if (win.hwnd == ctx.foregroundWindow && attentionWindows.count(win.hwnd))
-                attentionWindows.erase(win.hwnd); /* Read notif */
-            ID2D1Bitmap *bmp = GetOrLoadIcon(ctx, win);
+        for (const auto &item : stableList) {
+
+            for (HWND hw : item.windows) {
+                if (hw == ctx.foregroundWindow && attentionWindows.count(hw)) attentionWindows.erase(hw);
+            }
+
+            ID2D1Bitmap *bmp = GetItemIcon(ctx, item);
             float iconX = drawCursor + itemStyle.padding.left;
+
             if (bmp) {
                 D2D1_RECT_F dest = D2D1::RectF(iconX, drawY, iconX + iconSize, drawY + iconSize);
-
-                float opacity = (win.hwnd && !IsWindowVisible(win.hwnd)) ? 0.5f : 1.0f;
+                float opacity = item.windows.empty() ? 0.5f : 1.0f;
                 ctx.rt->DrawBitmap(bmp, dest, opacity);
             }
 
-            if (attentionWindows.count(win.hwnd)) {
-                float dotSize = 6.0f;
-                float dotX = iconX + iconSize - dotSize + 1.0f;
-                float dotY = drawY - 1.0f; // Slightly above icon
+            int winCount = (int)item.windows.size();
+            if (winCount > 0 && activeItem != &item) {
+                int dotsToShow = (std::min)(winCount, 3);
+                float dotSize = 4.0f; float dotGap = 2.0f;
+                float totalDotsWidth = (dotsToShow * dotSize) + ((dotsToShow - 1) * dotGap);
 
-                D2D1_ELLIPSE dot = D2D1::Ellipse(
-                    D2D1::Point2F(dotX + (dotSize / 2), dotY + (dotSize / 2)),
-                    dotSize / 2, dotSize / 2
-                );
+                float clusterStartX = iconX + (iconSize / 2.0f) - (totalDotsWidth / 2.0f);
+                float dotY = drawY + iconSize + 7.0f;
+
+                for (int d = 0; d < dotsToShow; d++) {
+                    float dx = clusterStartX + (d * (dotGap + dotSize));
+                    D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(dx + (dotSize / 2), dotY + (dotSize / 2)), dotSize / 2, dotSize / 2);
+
+                    ctx.bgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f));
+                    ctx.rt->FillEllipse(dot, ctx.bgBrush);
+                }
+            }
+
+            bool hasAttention = false;
+            for (HWND hw : item.windows) {
+                if (attentionWindows.count(hw)) { hasAttention = true; break; }
+            }
+            if (hasAttention) {
+                D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(iconX + iconSize - 2, drawY + 2), 3, 3);
                 ctx.bgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::Red));
                 ctx.rt->FillEllipse(dot, ctx.bgBrush);
             }
 
-            if (win.isPinned && pStarGeo) {
-                float starX = iconX + iconSize - 2.0f;
-                float starY = drawY + iconSize - 2.0f;
-
-                D2D1::Matrix3x2F oldTransform;
-                ctx.rt->GetTransform(&oldTransform); // Save current state
-                ctx.rt->SetTransform(D2D1::Matrix3x2F::Translation(starX, starY));
-
-                ctx.bgBrush->SetColor(D2D1::ColorF(0xFFD700)); // Gold
-                ctx.rt->FillGeometry(pStarGeo, ctx.bgBrush);
-                ctx.rt->SetTransform(oldTransform);
-            }
             drawCursor += (itemBoxWidth + itemSpacing);
         }
 
-        // Clean Icon Cache
-        if (++cleanupCounter > 60) {
-            cleanupCounter = 0;
-            for (auto it = iconCache.begin(); it != iconCache.end();) {
-                bool isUsed = false;
-                for (const auto &w : stableList) {
-                    if (w.hwnd == it->first) { isUsed = true; break; }
-                }
-                if (!isUsed) {
-                    if (it->second) it->second->Release();
-                    it = iconCache.erase(it);
-                }
-                else ++it;
-
-
-            }
-
-            for (auto it = pinnedIconCache.begin(); it != pinnedIconCache.end();) {
-                bool isUsed = false;
-                for (const auto &w : stableList) {
-                    if (w.hwnd == NULL && w.isPinned && GetPathHash(w.exePath) == it->first)
-                    {
-                        auto [effPath, effIndex] = GetEffectiveIconPath(w);
-                        if (GetPathHash(effPath) == it->first) {
-                            isUsed = true; break;
-                        }
+        bool shouldShow = false;
+        if (previewState.active && previewState.groupIndex >= 0 && previewState.groupIndex < stableList.size()) {
+            if (m_previewWin) {
+                if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
+                    POINT pt; GetCursorPos(&pt);
+                    RECT winRect; GetWindowRect(m_previewWin->GetHwnd(), &winRect);
+                    bool inWindow = PtInRect(&winRect, pt);
+                    bool inIcon = PtInRect(&previewState.lastIconRect, pt);
+                    if (!inWindow && !inIcon) {
+                        previewState.active = false;
+                        shouldShow = false;
                     }
                 }
-                if (!isUsed) {
-                    if (it->second) it->second->Release();
-                    it = pinnedIconCache.erase(it);
+
+                if (previewState.active) {
+                    float dpi = (float)GetDpiForWindow(ctx.hwnd);
+                    float scale = dpi / 96.0f;
+
+                    float iconLogicalX = startX + (previewState.groupIndex * (itemBoxWidth + itemSpacing));
+                    POINT pt = { (LONG)(iconLogicalX * scale), (LONG)(y * scale) };
+                    ClientToScreen(ctx.hwnd, &pt);
+                    previewState.lastIconRect = {
+                        pt.x, pt.y,
+                        pt.x + (LONG)(itemBoxWidth * scale),
+                        pt.y + (LONG)(iconSize * scale)
+                    };
+
+                    bool inSafeZone = IsMouseInPreviewOrGap();
+                    if (inSafeZone || previewState.spawnFrames < 20) {
+                        shouldShow = true;
+                        if (inSafeZone) previewState.spawnFrames = 0;
+                        else previewState.spawnFrames++;
+
+                        DockPreviewColors colors;
+                        colors.bg = D2D1::ColorF(0.12f, 0.12f, 0.12f, 1.0f);
+                        const DockItem &item = stableList[previewState.groupIndex];
+                        HICON hPreviewIcon = NULL;
+                        HWND hIconWin = item.windows.empty() ? NULL : item.windows[0];
+                        if (hIconWin) {
+                            hPreviewIcon = (HICON)SendMessage(hIconWin, WM_GETICON, ICON_BIG, 0);
+                            if (!hPreviewIcon) hPreviewIcon = (HICON)GetClassLongPtr(hIconWin, GCLP_HICON);
+                        }
+                        m_previewWin->Update(ctx.hwnd, item.title, item.windows, hPreviewIcon, previewState.lastIconRect, colors);
+                    }
+                    else {
+                        previewState.active = false;
+                        shouldShow = false;
+                        previewState.spawnFrames = 0;
+                    }
                 }
-                else ++it;
             }
         }
+
+        if (!shouldShow && m_previewWin) m_previewWin->Hide();
+
+        // --- FIX: Keep Alive Timer ---
+        // If we have an active app, reset the timer to 60 frames (approx 1 sec).
+        // If activeItem is null (app closed), this timer continues to decrement,
+        // forcing redraws until PruneDeadWindows successfully detects the closed window.
+        if (activeItem) {
+            keepAliveFrames = 60;
+        }
+
+        if (keepAliveFrames > 0) {
+            keepAliveFrames--;
+            InvalidateRect(ctx.hwnd, NULL, FALSE);
+        }
+
+        if (++cleanupCounter > 600) cleanupCounter = 0;
+    }
+
+    bool HitTestPreview(float x, float y, int &outHoverIndex) {
+        if (!m_previewWin || !m_previewWin->IsVisible()) return false;
+        if (m_previewWin->IsMouseOver()) {
+            outHoverIndex = m_previewWin->GetHoveredIndex();
+            return true;
+        }
+        return false;
+    }
+
+    void ClickPreviewItem(int index) {
+        if (previewState.groupIndex < 0 || previewState.groupIndex >= stableList.size()) return;
+        if (index < 0) return;
+
+        const DockItem &item = stableList[previewState.groupIndex];
+        if (index < item.windows.size()) {
+            HWND target = item.windows[index];
+            if (IsIconic(target)) ShowWindow(target, SW_RESTORE);
+            SetForegroundWindow(target);
+            SetOptimisticFocus(target);
+            previewState.active = false;
+        }
+    }
+
+    HWND GetWindowAtIndex(int index) {
+        if (index >= 0 && index < stableList.size()) {
+            const DockItem &item = stableList[index];
+            if (item.windows.empty()) return NULL;
+            return item.windows[0];
+        }
+        return NULL;
     }
 
     void SetAttention(HWND hwnd, bool active) {
@@ -462,79 +632,55 @@ public:
         return (int)stableList.size();
     }
 
-    std::wstring GetAppDescription(const std::wstring &path) {
-        DWORD handle;
-        DWORD size = GetFileVersionInfoSizeW(path.c_str(), &handle);
-        if (size == 0) return L"";
-
-        std::vector<BYTE> data(size);
-        if (!GetFileVersionInfoW(path.c_str(), handle, size, data.data())) return L"";
-
-        struct LANGANDCODEPAGE {
-            WORD wLanguage;
-            WORD wCodePage;
-        } *lpTranslate;
-
-        UINT cbTranslate;
-        // Read the list of languages and code pages.
-        if (VerQueryValueW(data.data(), L"\\VarFileInfo\\Translation", (LPVOID *)&lpTranslate, &cbTranslate)) {
-            for (unsigned int i = 0; i < (cbTranslate / sizeof(struct LANGANDCODEPAGE)); i++) {
-                wchar_t subBlock[50];
-                swprintf_s(subBlock, L"\\StringFileInfo\\%04x%04x\\FileDescription",
-                    lpTranslate[i].wLanguage, lpTranslate[i].wCodePage);
-
-                void *desc = nullptr;
-                UINT descLen = 0;
-                if (VerQueryValueW(data.data(), subBlock, &desc, &descLen) && descLen > 0) {
-                    std::wstring result((wchar_t *)desc);
-                    if (!result.empty()) return result;
-                }
-            }
-        }
-        return L"";
-    }
-
     std::wstring GetTitleAtIndex(int index) {
         if (index >= 0 && index < stableList.size()) {
-
-            // Window Title (if running)
-            if (!stableList[index].title.empty()) {
-                return stableList[index].title;
-            }
-
-            // Manual Name (from PinnedAppEntry)
-            if (stableList[index].isPinned) {
-                size_t h = GetPathHash(stableList[index].exePath);
-                for (const auto &entry : m_pinnedApps) {
-                    if (GetPathHash(entry.path) == h && !entry.name.empty()) {
-                        return entry.name;
-                    }
-                }
-            }
-
-            // File Description (Metadata)
-            if (!stableList[index].exePath.empty()) {
-                std::wstring path = stableList[index].exePath;
-                std::wstring desc = GetAppDescription(path);
-                if (!desc.empty()) return desc;
-
-                size_t lastSlash = path.find_last_of(L"\\/");
-                std::wstring filename = (lastSlash != std::string::npos) ? path.substr(lastSlash + 1) : path;
-                size_t lastDot = filename.find_last_of(L".");
-                if (lastDot != std::string::npos) filename = filename.substr(0, lastDot);
-                if (!filename.empty()) filename[0] = towupper(filename[0]);
-                return filename;
-            }
+            return stableList[index].title;
         }
         return L"";
     }
 
-    HWND GetWindowAtIndex(int index) {
-        if (index >= 0 && index < stableList.size()) return stableList[index].hwnd;
-        return NULL;
+    HWND GetNextWindowInGroup(int index, HWND currentHwnd, int step = 1) {
+        if (index < 0 || index >= stableList.size()) return NULL;
+        const DockItem &item = stableList[index];
+        if (item.windows.empty()) return NULL;
+        if (item.windows.size() == 1) return item.windows[0];
+
+        int currentIdx = -1;
+        for (size_t i = 0; i < item.windows.size(); i++) {
+            if (item.windows[i] == currentHwnd) { currentIdx = (int)i; break; }
+        }
+
+        if (currentIdx == -1) return item.windows[0];
+
+        int nextIdx = (currentIdx + step) % (int)item.windows.size();
+        if (nextIdx < 0) nextIdx += (int)item.windows.size();
+        return item.windows[nextIdx];
+    }
+
+    void ForceHidePreview() {
+        previewState.active = false;
+        previewState.groupIndex = -1;
+        suppressPreview = true;
+        if (m_previewWin) m_previewWin->Hide();
     }
 
     WindowInfo GetWindowInfoAtIndex(int index) {
-        return (index >= 0 && index < stableList.size()) ? stableList[index] : WindowInfo{};
+        WindowInfo info = {};
+        if (index >= 0 && index < stableList.size()) {
+            const DockItem &item = stableList[index];
+            info.exePath = item.exePath;
+            info.title = item.title;
+            info.isPinned = item.isPinned;
+            info.pathHash = item.pathHash;
+
+            if (!item.windows.empty()) {
+                info.hwnd = item.windows[0];
+                GetWindowRect(info.hwnd, &info.rect);
+            }
+            else {
+                info.hwnd = NULL;
+            }
+        }
+        return info;
     }
 };

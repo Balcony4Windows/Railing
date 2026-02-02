@@ -1,5 +1,4 @@
-﻿#define WIN32_LEAN_AND_MEAN
-#include <WinSock2.h>
+﻿#include <WinSock2.h>
 #include "ThemeLoader.h"
 #include "RailingRenderer.h"
 #include "ModuleFactory.h"

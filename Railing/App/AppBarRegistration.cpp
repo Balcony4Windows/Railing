@@ -1,160 +1,148 @@
 #include "AppBarRegistration.h"
-#include "Railing.h"
+#include <shellapi.h>
+#include <stdio.h> 
 #include <string>
-#include <sstream>
+#include <windows.h>
+#include <ShlObj_core.h>
 
-void RegisterAppBar(HWND hwnd) {
-    // We no longer register the visual HWND directly. 
-    // The logic is moved to UpdateAppBarPosition to target the Backend window.
-}
+// Ensure message ID is defined
+#ifndef WM_RAILING_APPBAR
+#define WM_RAILING_APPBAR (WM_USER + 20)
+#endif
 
-void UnregisterAppBar(HWND hwndVisual) // Pass the visual HWND to find the monitor
-{
-    // 1. Unregister the Backend
-    HWND hBackend = FindWindow(L"Shell_TrayWnd", NULL);
-    if (hBackend) {
-        APPBARDATA abd = { sizeof(abd) };
-        abd.hWnd = hBackend;
-        SHAppBarMessage(ABM_REMOVE, &abd);
-    }
+// Global flag to track if we are allowed to use Shell API
+static bool g_IsRegistered = false;
 
-    // 2. FORCE RESTORE WORK AREA (The Fix)
-    // We calculate the full monitor size and tell Windows "This is the new work area."
-    HMONITOR hMon = MonitorFromWindow(hwndVisual, MONITOR_DEFAULTTOPRIMARY);
-    MONITORINFO mi = { sizeof(mi) };
-    mi.cbSize = sizeof(mi);
+struct NudgeParams {
+    HWND hBar;
+    HMONITOR hBarMonitor;
+};
 
-    if (GetMonitorInfo(hMon, &mi)) {
-        RECT fullScreen = mi.rcMonitor;
-
-        // Reset the system work area to the full screen bounds
-        SystemParametersInfo(SPI_SETWORKAREA, 0, &fullScreen, SPIF_SENDCHANGE | SPIF_UPDATEINIFILE);
-
-        // Broadcast the good news so windows expand
-        SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, SPI_SETWORKAREA, 0, SMTO_ABORTIFHUNG, 100, NULL);
-        SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)L"Environment", SMTO_ABORTIFHUNG, 100, NULL);
-    }
-
-    OutputDebugStringW(L"[AppBar] Unregistered & WorkArea Restored.\n");
-}
-
-void UpdateAppBarPosition(HWND hwndVisual, ThemeConfig &theme)
-{
-    static bool isUpdating = false;
-    if (isUpdating) return;
-    isUpdating = true;
-
-    // 1. Find the REAL authority (The Backend Window)
-    HWND hBackend = FindWindow(L"Shell_TrayWnd", NULL);
-
-    // If backend isn't ready yet, we can't reserve space properly. 
-    // Just move the visual window and bail.
-    if (!hBackend) {
-        OutputDebugStringW(L"[AppBar] Critical: Shell_TrayWnd backend not found yet.\n");
-        isUpdating = false;
-        return;
-    }
-
-    // 2. Get Monitor & Scale
-    HMONITOR hMon = MonitorFromWindow(hwndVisual, MONITOR_DEFAULTTOPRIMARY);
+// --- HELPER: BRUTE FORCE WORK AREA ---
+// Used when ABM fails (Admin mode mismatch or Explorer dead)
+void ForceWorkArea(HWND hwnd, int thickness, const std::string &position) {
+    HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi = { sizeof(mi) };
     GetMonitorInfo(hMon, &mi);
 
-    float dpi = (float)GetDpiForWindow(hwndVisual);
-    float scale = dpi / 96.0f;
-    int thickness = (int)(theme.global.height * scale);
-    int mLeft = (int)(theme.global.margin.left * scale);
-    int mRight = (int)(theme.global.margin.right * scale);
-    int mTop = (int)(theme.global.margin.top * scale);
-    int mBottom = (int)(theme.global.margin.bottom * scale);
+    // 1. Start with the full monitor dimensions
+    RECT newWorkArea = mi.rcMonitor;
 
-    // 3. Register the BACKEND as the AppBar
-    // Windows respects 'Shell_TrayWnd' implicitly.
+    // 2. Subtract our bar's space
+    if (position == "left") newWorkArea.left += thickness;
+    else if (position == "right") newWorkArea.right -= thickness;
+    else if (position == "top") newWorkArea.top += thickness;
+    else newWorkArea.bottom -= thickness;
+
+    // 3. Force the Kernel to update the Work Area
+    // This bypasses the Shell "negotiation" and just sets the rule.
+    BOOL result = SystemParametersInfo(SPI_SETWORKAREA, 0, &newWorkArea, SPIF_SENDCHANGE | SPIF_UPDATEINIFILE);
+
+    if (result) {
+        OutputDebugString(L"[Railing] Fallback: SPI_SETWORKAREA Enforced successfully.\n");
+    }
+    else {
+        OutputDebugString(L"[Railing] Fallback: SPI_SETWORKAREA Failed.\n");
+    }
+
+    // 4. Manually Broadcast the change so apps (Chrome/Discord) know to resize
+    SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, SPI_SETWORKAREA,
+        (LPARAM)L"WorkArea", SMTO_ABORTIFHUNG, 100, NULL);
+}
+
+// --- CALLBACK FOR NUDGING WINDOWS ---
+BOOL CALLBACK NudgeMaximizedWindows(HWND hwnd, LPARAM lParam) {
+    NudgeParams *params = (NudgeParams *)lParam;
+    if (hwnd == params->hBar || !IsWindowVisible(hwnd)) return TRUE;
+
+    WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+    if (GetWindowPlacement(hwnd, &wp) && wp.showCmd == SW_SHOWMAXIMIZED) {
+        HMONITOR hWndMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
+        if (hWndMonitor == params->hBarMonitor) {
+            PostMessage(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
+            PostMessage(hwnd, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+        }
+    }
+    return TRUE;
+}
+
+// Add to includes:
+#include <strsafe.h> // For StringCchPrintf
+
+void RegisterAppBar(HWND hwnd) {
     APPBARDATA abd = { sizeof(abd) };
-    abd.hWnd = hBackend;
+    abd.hWnd = hwnd;
     abd.uCallbackMessage = WM_RAILING_APPBAR;
 
-    // Ensure it is registered (Safe to call multiple times, fails silently if exists)
-    SHAppBarMessage(ABM_NEW, &abd);
+    SHAppBarMessage(ABM_REMOVE, &abd);
 
-    // 4. Calculate Reservation (Edge)
-    if (theme.global.position == "bottom") abd.uEdge = ABE_BOTTOM;
-    else if (theme.global.position == "left") abd.uEdge = ABE_LEFT;
-    else if (theme.global.position == "right") abd.uEdge = ABE_RIGHT;
-    else abd.uEdge = ABE_TOP;
+    BOOL result = (BOOL)SHAppBarMessage(ABM_NEW, &abd);
 
-    // Total reserved thickness includes margins
-    int reservedThickness = thickness;
-    if (abd.uEdge == ABE_TOP || abd.uEdge == ABE_BOTTOM) reservedThickness += mTop + mBottom;
-    else reservedThickness += mLeft + mRight;
+    if (result) {
+        g_IsRegistered = true;
+        OutputDebugString(L"[Railing] SUCCESS: ABM_NEW accepted.\n");
+    }
+    else {
+        g_IsRegistered = false;
+    }
+}
 
-    // 5. Query & Set (Using the Backend HWND)
+void UnregisterAppBar(HWND hwnd) {
+    APPBARDATA abd = { sizeof(abd) };
+    abd.hWnd = hwnd;
+    SHAppBarMessage(ABM_REMOVE, &abd);
+    g_IsRegistered = false;
+}
+
+void UpdateAppBarPosition(HWND hwnd, ThemeConfig &config)
+{
+    // 1. Setup Data
+    APPBARDATA abd = { sizeof(abd) };
+    abd.hWnd = hwnd;
+    abd.uCallbackMessage = WM_RAILING_APPBAR;
+
+    HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi = { sizeof(mi) };
+    GetMonitorInfo(hMon, &mi);
     abd.rc = mi.rcMonitor;
-    SHAppBarMessage(ABM_QUERYPOS, &abd);
 
-    switch (abd.uEdge) {
-    case ABE_LEFT:   abd.rc.right = abd.rc.left + reservedThickness; break;
-    case ABE_RIGHT:  abd.rc.left = abd.rc.right - reservedThickness; break;
-    case ABE_TOP:    abd.rc.bottom = abd.rc.top + reservedThickness; break;
-    case ABE_BOTTOM: abd.rc.top = abd.rc.bottom - reservedThickness; break;
+    float dpi = (float)GetDpiForWindow(hwnd);
+    int thickness = (int)(config.global.height * (dpi / 96.0f));
+
+    if (config.global.position == "left") {
+        abd.uEdge = ABE_LEFT; abd.rc.right = abd.rc.left + thickness;
     }
-
-    // Apply Reservation
-    if (theme.global.autoHide) {
-        APPBARDATA hidden = abd;
-        hidden.rc = { 0,0,0,0 };
-        SHAppBarMessage(ABM_SETPOS, &hidden);
+    else if (config.global.position == "right") {
+        abd.uEdge = ABE_RIGHT; abd.rc.left = abd.rc.right - thickness;
+    }
+    else if (config.global.position == "top") {
+        abd.uEdge = ABE_TOP; abd.rc.bottom = abd.rc.top + thickness;
     }
     else {
+        abd.uEdge = ABE_BOTTOM; abd.rc.top = abd.rc.bottom - thickness;
+    }
+
+    // 2. Register with Backend (For Z-Order/Notifications)
+    if (!config.global.autoHide) {
         SHAppBarMessage(ABM_SETPOS, &abd);
+        SHAppBarMessage(ABM_WINDOWPOSCHANGED, &abd);
     }
 
-    // 6. Resize the Backend Window to MATCH the reservation
-    // This is the magic step. The "Tray Window" must visibly (to the OS) occupy the space.
-    if (!theme.global.autoHide) {
-        SetWindowPos(hBackend, NULL,
-            abd.rc.left, abd.rc.top,
-            abd.rc.right - abd.rc.left, abd.rc.bottom - abd.rc.top,
-            SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW);
+    // --- FIX: ACTUALLY CALL THE FALLBACK ---
+    // This is the line that was missing. It forces the screen space reserved.
+    if (!config.global.autoHide) {
+        ForceWorkArea(hwnd, thickness, config.global.position);
     }
+    // ---------------------------------------
 
-    // 7. Move the VISUAL Window (RailingBar)
-    // It floats over the area we just reserved using the backend.
-    int finalX, finalY, finalW, finalH;
+    // 3. Move Window
+    SetWindowPos(hwnd, HWND_TOPMOST,
+        abd.rc.left, abd.rc.top,
+        abd.rc.right - abd.rc.left, abd.rc.bottom - abd.rc.top,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOCOPYBITS);
 
-    if (abd.uEdge == ABE_TOP) {
-        finalX = mi.rcMonitor.left + mLeft;
-        finalY = mi.rcMonitor.top + mTop;
-        finalW = (mi.rcMonitor.right - mi.rcMonitor.left) - mLeft - mRight;
-        finalH = thickness;
+    if (!config.global.autoHide) {
+        NudgeParams params = { hwnd, hMon };
+        EnumWindows(NudgeMaximizedWindows, (LPARAM)&params);
     }
-    else if (abd.uEdge == ABE_BOTTOM) {
-        finalX = mi.rcMonitor.left + mLeft;
-        finalY = mi.rcMonitor.bottom - mBottom - thickness;
-        finalW = (mi.rcMonitor.right - mi.rcMonitor.left) - mLeft - mRight;
-        finalH = thickness;
-    }
-    else if (abd.uEdge == ABE_LEFT) {
-        finalX = mi.rcMonitor.left + mLeft;
-        finalY = mi.rcMonitor.top + mTop;
-        finalW = thickness;
-        finalH = (mi.rcMonitor.bottom - mi.rcMonitor.top) - mTop - mBottom;
-    }
-    else {
-        finalX = mi.rcMonitor.right - mRight - thickness;
-        finalY = mi.rcMonitor.top + mTop;
-        finalW = thickness;
-        finalH = (mi.rcMonitor.bottom - mi.rcMonitor.top) - mTop - mBottom;
-    }
-
-    MoveWindow(hwndVisual, finalX, finalY, finalW, finalH, TRUE);
-
-    // Visual bar stays on top of everything (including the backend window)
-    SetWindowPos(hwndVisual, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
-    // 8. Force Broadcast
-    // Tell Windows to re-read the environment (Work Area)
-    SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, SPI_SETWORKAREA, 0, SMTO_ABORTIFHUNG, 100, NULL);
-
-    isUpdating = false;
 }

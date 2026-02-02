@@ -8,7 +8,7 @@
 #include <dwmapi.h>
 #include <cmath>
 #include "TrayBackend.h"
-#include <TrayFlyout.h>
+#include "TrayFlyout.h"
 
 #pragma comment(lib, "dwmapi.lib") 
 #pragma comment(lib, "d2d1")
@@ -90,6 +90,16 @@ bool Railing::Initialize(HINSTANCE hInstance)
     hwndBar = CreateBarWindow(hInstance, cachedConfig);
     if (!hwndBar) return false;
 
+    ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
+	ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD);
+	ChangeWindowMessageFilter(0x0049, MSGFLT_ADD); // COPYGLOBALDATA
+	ChangeWindowMessageFilter(WM_RAILING_APPBAR, MSGFLT_ADD);
+    ChangeWindowMessageFilter(WM_TASKBARCREATED, MSGFLT_ADD);
+	SendNotifyMessage(HWND_BROADCAST, WM_TASKBARCREATED, 0, 0);
+
+    RegisterAppBar(hwndBar);
+    UpdateAppBarPosition(hwndBar, cachedConfig);
+
     // Init Renderer
     if (!renderer) {
         renderer = new RailingRenderer(hwndBar, cachedConfig);
@@ -101,11 +111,13 @@ bool Railing::Initialize(HINSTANCE hInstance)
     tooltips.Initialize(hwndBar);
     inputManager = std::make_unique<InputManager>(this, renderer, &tooltips);
 
-    CheckForConfigUpdate();
     WindowMonitor::GetTopLevelWindows(allWindows, pinnedApps, hwndBar);
 
     for (const auto &win : allWindows) workspaces.AddWindow(win.hwnd);
     for (int i = 0; i < 5; i++) RegisterHotKey(hwndBar, 100 + i, MOD_ALT | MOD_NOREPEAT, 0x31 + i);
+
+    ShowWindow(hwndBar, SW_SHOWNOACTIVATE);
+    UpdateWindow(hwndBar);
 
     // Animation / Show
     RECT targetRect; GetWindowRect(hwndBar, &targetRect);
@@ -138,7 +150,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
             Sleep(frameDelay);
         }
     }
-    UpdateAppBarPosition(hwndBar, cachedConfig);
+
     if (renderer) renderer->Resize();
     ShowWindow(hwndBar, SW_SHOW);
     UpdateWindow(hwndBar);
@@ -147,12 +159,17 @@ bool Railing::Initialize(HINSTANCE hInstance)
     shellMsgId = RegisterWindowMessage(L"SHELLHOOK");
     RegisterHotKey(hwndBar, HOTKEY_KILL_THIS, MOD_CONTROL | MOD_SHIFT, 0x51);
 
-    ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
-    ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD);
-    ChangeWindowMessageFilter(0x0049, MSGFLT_ADD); // COPYGLOBALDATA
+    CheckForConfigUpdate();
+    networkBackend.GetCurrentStatus(cachedWifiState, cachedWifiSignal);
 
     titleHook = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE,
         nullptr, Railing::WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    focusHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
+		nullptr, Railing::WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    windowLifecycleHook = SetWinEventHook(
+        EVENT_OBJECT_CREATE, EVENT_OBJECT_HIDE,
+        nullptr, Railing::WinEventProc,
+        0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     SetTimer(hwndBar, 1, 1000, NULL); // Stats (1s is optimal for CPU calculation)
     SetTimer(hwndBar, 2, 16, NULL); // Animation
@@ -229,14 +246,20 @@ bool Railing::Initialize(HINSTANCE hInstance)
 
 HWND Railing::CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config)
 {
-    const wchar_t CLASS_NAME[] = L"RailingBar";
+    const wchar_t CLASS_NAME[] = L"Shell_TrayWnd";
     WNDCLASS wc = {};
     wc.lpfnWndProc = Railing::WindowProc;
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(hInstance, IDC_ARROW);
     wc.lpszClassName = CLASS_NAME;
     wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
-    RegisterClass(&wc);
+    wc.style = CS_DBLCLKS | CS_HREDRAW | CS_VREDRAW;
+    if (!RegisterClass(&wc)) {
+		if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+            MessageBox(NULL, L"Railing cannot start because 'Shell_TrayWnd' already exists.\nPlease kill explorer.exe via Task Manager.", L"Error", MB_ICONERROR);
+            exit(1);
+        }
+    }
 
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
@@ -259,11 +282,25 @@ HWND Railing::CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config)
     else if (pos == "right") { x = screenW - thickness - mRight; w = thickness; h = screenH - mTop - mBottom; }
 
     HWND hwnd = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST | WS_EX_LAYERED | WS_EX_TOOLWINDOW,
         CLASS_NAME, L"Railing",
         WS_POPUP, x, y, w, h,
-        nullptr, nullptr, hInstance, this
-    );
+        nullptr, nullptr, hInstance, this);
+    SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+
+    WNDCLASSEX wcNotify = { sizeof(WNDCLASSEX) };
+	wcNotify.lpfnWndProc = DefWindowProc;
+	wcNotify.hInstance = hInstance;
+	wcNotify.lpszClassName = L"TrayNotifyWnd";
+	RegisterClassEx(&wcNotify);
+
+    CreateWindowEx(
+        0, L"TrayNotifyWnd", L"",
+        WS_CHILD | WS_VISIBLE,
+        0, 0, 0, 0,
+        hwnd,
+        NULL, hInstance, NULL);
+
     MARGINS margins = { -1 };
     DwmExtendFrameIntoClientArea(hwnd, &margins);
     return hwnd;
@@ -303,10 +340,18 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_PAINT:
         self->DrawBar(hwnd);
         return 0;
-
+    case WM_COPYDATA:
+        return TrayBackend::Get().HandleCopyData((HWND)wParam, (COPYDATASTRUCT *)lParam);
     case WM_ERASEBKGND:
         return 1;
-
+    case WM_USER+999:
+        self->networkBackend.GetCurrentStatus(self->cachedWifiState, self->cachedWifiSignal);
+        if (self->renderer) {
+            self->renderer->currentStats.isWifiConnected = self->cachedWifiState;
+            self->renderer->currentStats.wifiSignal = self->cachedWifiSignal;
+        }
+        InvalidateRect(hwnd, NULL, FALSE);
+        return 0;
         // --- DELEGATED INPUT ---
     case WM_MOUSEMOVE:
         if (self->inputManager) self->inputManager->HandleMouseMove(hwnd, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
@@ -446,6 +491,9 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
             // Tell shell we are active
             SHAppBarMessage(ABM_ACTIVATE, &abd);
         }
+        if (LOWORD(wParam) == WA_INACTIVE) {
+            self->inputManager->tooltips->Hide();
+        }
         return 0;
     case WM_RAILING_CMD:
         if (wParam == CMD_SWITCH_WORKSPACE && self->renderer) {
@@ -471,6 +519,7 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_DESTROY:
         UnregisterAppBar(hwnd);
         if (self->titleHook) UnhookWinEvent(self->titleHook);
+        if (self->windowLifecycleHook) UnhookWinEvent(self->windowLifecycleHook);
         if (self->flyout) DestroyWindow(self->flyout->hwnd);
         if (self->trayFlyout) delete self->trayFlyout;
         if (self->networkFlyout) delete self->networkFlyout;
@@ -479,9 +528,9 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
     default:
         if (uMsg == self->shellMsgId) {
-            WindowMonitor::GetTopLevelWindows(self->allWindows, self->pinnedApps, self->hwndBar);
             int code = (int)wParam;
             HWND newWin = (HWND)lParam;
+
             if (code == HSHELL_WINDOWCREATED) {
                 if (IsWindow(newWin) && IsWindowVisible(newWin)) {
                     WindowMonitor::GetTopLevelWindows(self->allWindows, self->pinnedApps, self->hwndBar);
@@ -490,16 +539,44 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
                 self->needsWindowRefresh = true;
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
-            else if (code == HSHELL_WINDOWACTIVATED) {
+            // FIX: Handle Activation Separately
+            else if (code == HSHELL_WINDOWACTIVATED || code == HSHELL_RUDEAPPACTIVATED) {
+				WindowMonitor::GetTopLevelWindows(self->allWindows, self->pinnedApps, self->hwndBar);
+				self->workspaces.AddWindow(newWin);
+
+                Module *m = self->renderer->GetModule("dock");
+                if (m) {
+                    // CRITICAL: Kill the 500ms wait timer immediately
+                    ((DockModule *)m)->SetOptimisticFocus(newWin);
+
+                    // Clear "Red Dot" attention if we focus the window
+                    ((DockModule *)m)->ClearAttention(newWin);
+                }
+                // Use InvalidateRect (as you requested), but the timer kill above is what removes the delay.
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
-            else if (code == HSHELL_RUDEAPPACTIVATED || uMsg == HSHELL_FLASH) {
+            // FIX: Handle Flash (Notification) Separately
+            else if (code == HSHELL_FLASH || uMsg == HSHELL_FLASH) {
                 Module *m = self->renderer->GetModule("dock");
                 if (m) ((DockModule *)m)->SetAttention(newWin, true);
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
+            else if (code == HSHELL_WINDOWDESTROYED) {
+                WindowMonitor::GetTopLevelWindows(self->allWindows, self->pinnedApps, self->hwndBar);
+
+                Module *m = self->renderer->GetModule("dock");
+                if (m) {
+                    ((DockModule *)m)->MarkDirty();
+
+                    if (newWin == ((DockModule *)m)->optimisticHwnd) {
+                        ((DockModule *)m)->SetOptimisticFocus(NULL);
+                    }
+                }
+
+                InvalidateRect(hwnd, nullptr, FALSE);
+            }
+
             self->needsWindowRefresh = true;
-            InvalidateRect(hwnd, nullptr, FALSE);
         }
         break;
     }
@@ -507,8 +584,43 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 }
 
 void Railing::WinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
-    if (event == EVENT_OBJECT_NAMECHANGE && IsWindow(hwnd) && instance && instance->hwndBar)
+    if (!instance || !instance->hwndBar) return;
+    if (idObject != OBJID_WINDOW) return;
+
+    if (event == EVENT_OBJECT_NAMECHANGE && IsWindow(hwnd)) {
         InvalidateRect(instance->hwndBar, nullptr, FALSE);
+    }
+    else if (event == EVENT_SYSTEM_FOREGROUND) {
+
+        // 1. Refresh Window List Immediately
+        WindowMonitor::GetTopLevelWindows(instance->allWindows, instance->pinnedApps, instance->hwndBar);
+        instance->workspaces.AddWindow(hwnd);
+
+        // 2. Force Dock Logic
+        if (instance->renderer) {
+            Module *m = instance->renderer->GetModule("dock");
+            if (m) {
+                ((DockModule *)m)->MarkDirty();
+                ((DockModule *)m)->SetOptimisticFocus(hwnd);
+                ((DockModule *)m)->ClearAttention(hwnd);
+            }
+        }
+
+        // 3. Paint Now
+        InvalidateRect(instance->hwndBar, nullptr, FALSE);
+    }
+    else if (event == EVENT_OBJECT_CREATE ||
+            event == EVENT_OBJECT_DESTROY ||
+            event == EVENT_OBJECT_SHOW ||
+            event == EVENT_OBJECT_HIDE) {
+        WindowMonitor::GetTopLevelWindows(instance->allWindows, instance->pinnedApps, instance->hwndBar);
+        if (instance->renderer) {
+            Module *m = instance->renderer->GetModule("dock");
+            if (m) ((DockModule *)m)->MarkDirty();
+        }
+
+        InvalidateRect(instance->hwndBar, nullptr, FALSE);
+    }
 }
 
 ULONGLONG Railing::GetInterval(std::string type, int def) {

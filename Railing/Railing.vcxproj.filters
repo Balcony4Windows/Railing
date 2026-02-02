@@ -146,20 +146,23 @@
       <Filter>Config</Filter>
     </ClInclude>
     <ClInclude Include="resource.h" />
-    <ClInclude Include="WindowMonitor.h">
+    <ClInclude Include="Services\WindowMonitor.h">
       <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="InputManager.h">
+    <ClInclude Include="App\InputManager.h">
       <Filter>App</Filter>
     </ClInclude>
-    <ClInclude Include="PinnedAppsIO.h">
+    <ClInclude Include="Services\PinnedAppsIO.h">
       <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="DropTarget.h">
+    <ClInclude Include="Services\DropTarget.h">
       <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="TrayBackend.h">
+    <ClInclude Include="Services\TrayBackend.h">
       <Filter>Services</Filter>
+    </ClInclude>
+    <ClInclude Include="DockPreviewWindow.h">
+      <Filter>UI</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -204,10 +207,10 @@
     <ClCompile Include="Renderer\RailingRenderer.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="WindowMonitor.cpp">
+    <ClCompile Include="Services\WindowMonitor.cpp">
       <Filter>Services</Filter>
     </ClCompile>
-    <ClCompile Include="InputManager.cpp">
+    <ClCompile Include="App\InputManager.cpp">
       <Filter>App</Filter>
     </ClCompile>
   </ItemGroup>

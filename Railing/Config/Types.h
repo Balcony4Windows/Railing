@@ -12,6 +12,7 @@ struct WindowInfo
 	RECT rect;
 
 	std::wstring exePath;
+	size_t pathHash;
 	bool isPinned = false;
 };
 

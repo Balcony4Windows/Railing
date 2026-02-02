@@ -17,24 +17,27 @@ ID2D1Bitmap *CreateBitmapFromIcon(ID2D1RenderTarget *rt, IWICImagingFactory *pWI
     ID2D1Bitmap *d2dBitmap = nullptr;
     IWICBitmap *wicBitmap = nullptr;
 
+    // Use WIC to wrap the HICON
     HRESULT hr = pWIC->CreateBitmapFromHICON(hIcon, &wicBitmap);
     if (FAILED(hr)) return nullptr;
 
-    // Convert to PBGRA
-    IWICFormatConverter *converter = nullptr;
-    hr = pWIC->CreateFormatConverter(&converter);
-    if (SUCCEEDED(hr) && converter) {
-        hr = converter->Initialize(
+    IWICFormatConverter *pConverter = nullptr;
+    hr = pWIC->CreateFormatConverter(&pConverter);
+    if (SUCCEEDED(hr)) {
+        // Specifically use GUID_WICPixelFormat32bppPBGRA for Direct2D compatibility
+        hr = pConverter->Initialize(
             wicBitmap,
             GUID_WICPixelFormat32bppPBGRA,
             WICBitmapDitherTypeNone,
-            NULL, 0.f,
-            WICBitmapPaletteTypeMedianCut
+            NULL,
+            0.f,
+            WICBitmapPaletteTypeCustom
         );
+
         if (SUCCEEDED(hr)) {
-            rt->CreateBitmapFromWicBitmap(converter, &d2dBitmap);
+            rt->CreateBitmapFromWicBitmap(pConverter, NULL, &d2dBitmap);
         }
-        converter->Release();
+        pConverter->Release();
     }
     wicBitmap->Release();
     return d2dBitmap;
@@ -69,11 +72,10 @@ TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImaging
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 
     SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+    if (TrayBackend::MultipleTrays) SetTimer(hwnd, 1, 1000, NULL);
 
-    TrayBackend::Get().SetIconChangeCallback([&]() {
-        if (this->hwnd && IsWindow(this->hwnd)) {
-            PostMessage(this->hwnd, WM_TRAY_REFRESH, 0, 0);
-        }
+    TrayBackend::Get().SetIconChangeCallback([this]() {
+        if (IsWindow(hwnd)) PostMessage(hwnd, WM_TRAY_REFRESH, 0, 0);
         });
 }
 
@@ -109,6 +111,9 @@ void TrayFlyout::Toggle(RECT iconRect) {
         // Fetch Data
         currentIcons = TrayBackend::Get().GetIcons();
         UpdateLayout();
+
+		for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
+		cachedBitmaps.clear();
 
         // Dynamic Columns
         if (currentIcons.size() <= 5) layoutCols = max(1, (int)currentIcons.size());
@@ -308,9 +313,18 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
     case WM_TRAY_REFRESH:
         if (self && self->animState == AnimationState::Visible) {
             self->currentIcons = TrayBackend::Get().GetIcons();
+
+			for (auto *bmp : self->cachedBitmaps) if (bmp) bmp->Release();
+			self->cachedBitmaps.clear();
+
             self->UpdateLayout();
             self->UpdateBitmapCache();
             InvalidateRect(hwnd, NULL , FALSE);
+        }
+        return 0;
+    case WM_TIMER:
+		if (wParam == 1) { // Tray host timer when multiple trays exist
+            TrayBackend::Get().NotifyIconsChanged();
         }
         return 0;
     }
@@ -380,8 +394,7 @@ void TrayFlyout::OnMouseLeave() {
 void TrayFlyout::UpdateBitmapCache() {
     if (cachedBitmaps.size() != currentIcons.size()) {
         for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-        cachedBitmaps.clear();
-        cachedBitmaps.resize(currentIcons.size(), nullptr);
+        cachedBitmaps.assign(currentIcons.size(), nullptr);
     }
 
     for (size_t i = 0; i < currentIcons.size(); i++) {
@@ -505,7 +518,7 @@ void TrayFlyout::OnDoubleClick(int x, int y) {
             TrayBackend::Get().SendDoubleClick(icon);
 
             // Optional: Close flyout on double click?
-            // ShowWindow(hwnd, SW_HIDE); 
+            ShowWindow(hwnd, SW_HIDE); 
             break;
         }
     }
