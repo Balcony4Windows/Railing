@@ -163,6 +163,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="Config\ThemeTypes.h" />
     <ClInclude Include="Config\Types.h" />
     <ClInclude Include="DockPreviewWindow.h" />
+    <ClInclude Include="IFlyout.h" />
     <ClInclude Include="Services\DropTarget.h" />
     <ClInclude Include="External\nlohmann\json.hpp" />
     <ClInclude Include="App\InputManager.h" />

@@ -129,25 +129,40 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
                 }
                 else {
                     dock->previewState.hoveredRowIndex = -1;
-                    float modW = rectF.right - rectF.left;
-                    float localX = logicalX - rectF.left;
+
+                    // --- DOCK HOVER LOGIC ---
+                    std::string pos = renderer->theme.global.position;
+                    bool isVertical = (pos == "left" || pos == "right");
+
+                    float modLength = isVertical ? (rectF.bottom - rectF.top) : (rectF.right - rectF.left);
+                    float localPos = isVertical ? (logicalY - rectF.top) : (logicalX - rectF.left);
+
                     Style s = dock->GetEffectiveStyle();
                     Style itemStyle = dock->config.itemStyle;
+
                     float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
-                    float itemBoxWidth = iSize + itemStyle.padding.left + itemStyle.padding.right;
-                    float iSpace = itemStyle.margin.left + itemStyle.margin.right;
-                    if (dock->config.dockSpacing > 0) iSpace = dock->config.dockSpacing;
+
+                    // Calculate Stride based on orientation padding
+                    float paddingMain = isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right);
+                    float itemBoxStride = iSize + paddingMain;
+
+                    float marginMain = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
+                    float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : marginMain;
 
                     size_t count = dock->GetCount();
                     if (count > 0) {
-                        float totalWidth = (count * itemBoxWidth) + ((count - 1) * iSpace);
-                        float bgWidth = modW - s.margin.left - s.margin.right;
-                        float startX = s.margin.left + ((bgWidth - totalWidth) / 2.0f);
+                        float totalLength = (count * itemBoxStride) + ((count - 1) * iSpace);
 
-                        if (localX >= startX && localX <= (startX + totalWidth)) {
-                            float offset = localX - startX;
-                            int index = (int)(offset / (itemBoxWidth + iSpace));
-                            float relativePos = fmod(offset, (itemBoxWidth + iSpace));
+                        float marginStart = isVertical ? s.margin.top : s.margin.left;
+                        float marginEnd = isVertical ? s.margin.bottom : s.margin.right;
+                        float bgLength = modLength - marginStart - marginEnd;
+
+                        float startPos = marginStart + ((bgLength - totalLength) / 2.0f);
+
+                        if (localPos >= startPos && localPos <= (startPos + totalLength)) {
+                            float offset = localPos - startPos;
+                            int index = (int)(offset / (itemBoxStride + iSpace));
+                            float relativePos = fmod(offset, (itemBoxStride + iSpace));
 
                             static int lastHoveredDockIndex = -1;
                             if (index != lastHoveredDockIndex && index >= 0 && index < count) {
@@ -155,7 +170,7 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
                                 lastHoveredDockIndex = index;
                             }
 
-                            if (relativePos <= itemBoxWidth && index >= 0 && index < count) {
+                            if (relativePos <= itemBoxStride && index >= 0 && index < count) {
                                 newText = dock->GetTitleAtIndex(index);
                                 int wins = dock->GetWindowCountAtIndex(index);
                                 if (wins > 1) {
@@ -232,25 +247,39 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
 
         dock->ForceHidePreview();
 
-        float modW = rectF.right - rectF.left;
-        float clickX = ((float)x / scale) - rectF.left;
+        // --- FIXED VERTICAL CLICK LOGIC ---
+        std::string pos = renderer->theme.global.position;
+        bool isVertical = (pos == "left" || pos == "right");
+
+        float modLength = isVertical ? (rectF.bottom - rectF.top) : (rectF.right - rectF.left);
+        float clickPos = isVertical ? (logicalY - rectF.top) : (logicalX - rectF.left);
+
         Style s = dock->GetEffectiveStyle();
         float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
-        float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+
         Style itemStyle = dock->config.itemStyle;
-        float itemBoxWidth = iSize + itemStyle.padding.left + itemStyle.padding.right;
-        float itemSpacing = itemStyle.margin.left + itemStyle.margin.right;
-        if (iSpace > 0) itemSpacing = iSpace;
+        float paddingMain = isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right);
+        float itemBoxStride = iSize + paddingMain;
+
+        float marginMain = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
+        float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : marginMain;
+
         int count = dock->GetCount();
         if (count > 0) {
-            float totalWidth = (count * itemBoxWidth) + ((count - 1) * itemSpacing);
-            float bgWidth = modW - s.margin.left - s.margin.right;
-            float startX = s.margin.left + ((bgWidth - totalWidth) / 2.0f);
-            if (clickX >= startX && clickX <= (startX + totalWidth)) {
-                float offset = clickX - startX;
-                int index = (int)(offset / (itemBoxWidth + itemSpacing));
-                float relativePos = fmod(offset, (itemBoxWidth + itemSpacing));
-                if (relativePos <= itemBoxWidth && index >= 0 && index < count) {
+            float totalLength = (count * itemBoxStride) + ((count - 1) * iSpace);
+
+            float marginStart = isVertical ? s.margin.top : s.margin.left;
+            float marginEnd = isVertical ? s.margin.bottom : s.margin.right;
+            float bgLength = modLength - marginStart - marginEnd;
+
+            float startPos = marginStart + ((bgLength - totalLength) / 2.0f);
+
+            if (clickPos >= startPos && clickPos <= (startPos + totalLength)) {
+                float offset = clickPos - startPos;
+                int index = (int)(offset / (itemBoxStride + iSpace));
+                float relativePos = fmod(offset, (itemBoxStride + iSpace));
+
+                if (relativePos <= itemBoxStride && index >= 0 && index < count) {
                     WindowInfo info = dock->GetWindowInfoAtIndex(index);
                     if (info.hwnd == NULL) {
                         ShellExecuteW(NULL, L"open", info.exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
@@ -339,19 +368,35 @@ void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
     DockModule *dock = (DockModule *)m;
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;
-    float modW = rectF.right - rectF.left;
-    float clickX = ((float)x / scale) - rectF.left;
+
+    std::string pos = renderer->theme.global.position;
+    bool isVertical = (pos == "left" || pos == "right");
+
+    float modLength = isVertical ? (rectF.bottom - rectF.top) : (rectF.right - rectF.left);
+    float clickPos = isVertical ? (((float)y / scale) - rectF.top) : (((float)x / scale) - rectF.left);
+
     Style s = dock->GetEffectiveStyle();
     float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
-    float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+
+    Style itemStyle = dock->config.itemStyle;
+    float paddingMain = isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right);
+    float itemBoxStride = iSize + paddingMain;
+
+    float marginMain = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
+    float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : marginMain;
+
     int count = dock->GetCount();
     if (count > 0) {
-        float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
-        float bgWidth = modW - s.margin.left - s.margin.right;
-        float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
-        if (clickX >= startX && clickX <= (startX + totalIconWidth)) {
-            float offset = clickX - startX;
-            int index = (int)(offset / (iSize + iSpace));
+        float totalLength = (count * itemBoxStride) + ((count - 1) * iSpace);
+
+        float marginStart = isVertical ? s.margin.top : s.margin.left;
+        float marginEnd = isVertical ? s.margin.bottom : s.margin.right;
+        float bgLength = modLength - marginStart - marginEnd;
+        float startPos = marginStart + ((bgLength - totalLength) / 2.0f);
+
+        if (clickPos >= startPos && clickPos <= (startPos + totalLength)) {
+            float offset = clickPos - startPos;
+            int index = (int)(offset / (itemBoxStride + iSpace));
             if (index >= 0 && index < count) {
                 WindowInfo targetWin = dock->GetWindowInfoAtIndex(index);
                 HMENU hMenu = CreatePopupMenu();
@@ -421,17 +466,35 @@ void InputManager::HandleScroll(HWND hwnd, short delta) {
         DockModule *dock = (DockModule *)m;
         float dpi = (float)GetDpiForWindow(hwnd);
         float scale = dpi / 96.0f;
-        float clickX = ((float)pt.x / scale) - rectF.left;
+
+        // --- FIXED VERTICAL SCROLL LOGIC ---
+        std::string pos = renderer->theme.global.position;
+        bool isVertical = (pos == "left" || pos == "right");
+
+        float modLength = isVertical ? (rectF.bottom - rectF.top) : (rectF.right - rectF.left);
+        float clickPos = isVertical ? (((float)pt.y / scale) - rectF.top) : (((float)pt.x / scale) - rectF.left);
+
         Style s = dock->GetEffectiveStyle();
         float iSize = (dock->config.dockIconSize > 0) ? dock->config.dockIconSize : 24.0f;
-        float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : 8.0f;
+        Style itemStyle = dock->config.itemStyle;
+
+        float paddingMain = isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right);
+        float itemBoxStride = iSize + paddingMain;
+
+        float marginMain = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
+        float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : marginMain;
+
         int count = dock->GetCount();
-        float totalIconWidth = (count * iSize) + ((count - 1) * iSpace);
-        float bgWidth = (rectF.right - rectF.left) - s.margin.left - s.margin.right;
-        float startX = s.margin.left + ((bgWidth - totalIconWidth) / 2.0f);
-        if (clickX >= startX && clickX <= (startX + totalIconWidth)) {
-            float offset = clickX - startX;
-            int index = (int)(offset / (iSize + iSpace));
+        float totalLength = (count * itemBoxStride) + ((count - 1) * iSpace);
+
+        float marginStart = isVertical ? s.margin.top : s.margin.left;
+        float marginEnd = isVertical ? s.margin.bottom : s.margin.right;
+        float bgLength = modLength - marginStart - marginEnd;
+        float startPos = marginStart + ((bgLength - totalLength) / 2.0f);
+
+        if (clickPos >= startPos && clickPos <= (startPos + totalLength)) {
+            float offset = clickPos - startPos;
+            int index = (int)(offset / (itemBoxStride + iSpace));
             int direction = (delta > 0) ? -1 : 1;
             HWND currentFg = GetForegroundWindow();
             HWND nextWin = dock->GetNextWindowInGroup(index, currentFg, direction);
@@ -490,34 +553,50 @@ Module *InputManager::HitTest(int x, int y, D2D1_RECT_F &outRect) {
     float dpi = (float)GetDpiForWindow(app->hwndBar);
     float scale = dpi / 96.0f;
     POINT pt = { x, y };
+
     auto CheckList = [&](const std::vector<Module *> &list) -> Module *{
         for (Module *m : list) {
             D2D1_RECT_F f = renderer->GetModuleRect(m->config.id);
             if (f.right == 0.0f && f.bottom == 0.0f) continue;
-            RECT physRect = { (LONG)(f.left * scale), (LONG)(f.top * scale), (LONG)(f.right * scale), (LONG)(f.bottom * scale) };
 
-            // --- FIX: INFLATE HIT BOX ---
-            // The coordinate misalignment described (starts too high, ends too high)
-            // causes the bottom of the icon to be unclickable.
-            // We add significant vertical padding (24px) to catch the mouse even if it is physically "below" 
-            // the logical rectangle of the module.
+            RECT physRect = {
+                (LONG)(f.left * scale), (LONG)(f.top * scale),
+                (LONG)(f.right * scale), (LONG)(f.bottom * scale)
+            };
+
+            // INFLATE HIT BOX (Vertical padding for easier clicking)
             InflateRect(&physRect, 0, 24);
 
             if (PtInRect(&physRect, pt)) {
                 if (m->config.type == "group") {
                     GroupModule *g = (GroupModule *)m;
                     for (auto *child : g->children) {
-                        D2D1_RECT_F cf = renderer->GetModuleRect(child->config.id);
-                        RECT cphys = { (LONG)(cf.left * scale), (LONG)(cf.top * scale), (LONG)(cf.right * scale), (LONG)(cf.bottom * scale) };
+                        // --- FIX START ---
+                        // Don't ask Renderer for child rects (it doesn't know them).
+                        // Use the cachedRect stored on the child module itself.
+                        D2D1_RECT_F cf = child->cachedRect;
+                        // --- FIX END ---
+
+                        RECT cphys = {
+                            (LONG)(cf.left * scale), (LONG)(cf.top * scale),
+                            (LONG)(cf.right * scale), (LONG)(cf.bottom * scale)
+                        };
+
                         InflateRect(&cphys, 0, 24); // Inflate child items too
-                        if (PtInRect(&cphys, pt)) { outRect = cf; return child; }
+
+                        if (PtInRect(&cphys, pt)) {
+                            outRect = cf;
+                            return child;
+                        }
                     }
                 }
-                outRect = f; return m;
+                outRect = f;
+                return m;
             }
         }
         return nullptr;
         };
+
     Module *found = CheckList(renderer->leftModules); if (found) return found;
     found = CheckList(renderer->centerModules); if (found) return found;
     return CheckList(renderer->rightModules);

@@ -32,11 +32,12 @@ class DockModule : public Module {
     float iconSize = 24.0f;
     float spacing = 8.0f;
     float animSpeed = 0.25f;
-    float currentHighlightX = 0.0f;
+
+    float currentHighlightPos = 0.0f;
     bool isHighlightInitialized = false;
 
     int cleanupCounter = 0;
-    int keepAliveFrames = 0; // NEW: Timer to keep loop alive after window close
+    int keepAliveFrames = 0;
 
     size_t GetPathHash(const std::wstring &path) {
         std::wstring lower = path;
@@ -333,11 +334,8 @@ public:
         RECT gapRect;
         gapRect.left = std::min<LONG>(winRect.left, previewState.lastIconRect.left) - 20;
         gapRect.right = std::max<LONG>(winRect.right, previewState.lastIconRect.right) + 20;
-        gapRect.top = std::min<LONG>(winRect.bottom, previewState.lastIconRect.top);
-        gapRect.bottom = std::max<LONG>(winRect.top, previewState.lastIconRect.bottom);
-
-        gapRect.top -= 10;
-        gapRect.bottom += 10;
+        gapRect.top = std::min<LONG>(winRect.bottom, previewState.lastIconRect.top) + 20;
+        gapRect.bottom = std::max<LONG>(winRect.top, previewState.lastIconRect.bottom) + 20;
 
         if (PtInRect(&gapRect, cursor)) return true;
         return false;
@@ -356,9 +354,13 @@ public:
         size_t count = stableList.size();
         if (count == 0) return 0.0f;
 
-        float width = (count * iconSize) + ((count - 1) * spacing);
+        float length = (count * iconSize) + ((count - 1) * spacing);
         Style s = GetEffectiveStyle();
-        return width + s.padding.left + s.padding.right + s.margin.left + s.margin.right;
+
+        if (config.position == "left" || config.position == "right")
+            return length + s.padding.top + s.padding.bottom + s.margin.top + s.margin.bottom;
+        else
+            return length + s.padding.left + s.padding.right + s.margin.left + s.margin.right;
     }
 
     void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override {
@@ -375,6 +377,8 @@ public:
         UpdateStableList(ctx);
         if (stableList.empty()) return;
 
+        bool isVertical = (config.position == "left" || config.position == "right");
+
         Style containerStyle = GetEffectiveStyle();
         Style itemStyle = config.itemStyle;
 
@@ -388,18 +392,37 @@ public:
         }
 
         size_t count = stableList.size();
-        float itemBoxWidth = iconSize + itemStyle.padding.left + itemStyle.padding.right;
-        float itemSpacing = itemStyle.margin.left + itemStyle.margin.right;
+
+        // Calculate Main Axis dimensions
+        float itemBoxSize = iconSize; // Assume square
+        // Add padding to main axis size
+        float itemBoxStride = itemBoxSize + (isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right));
+
+        float itemSpacing = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
         if (spacing > 0) itemSpacing = spacing;
 
-        float totalWidth = (count * itemBoxWidth) + ((count - 1) * itemSpacing);
-        float bgWidth = w - containerStyle.margin.left - containerStyle.margin.right;
-        float startX = x + containerStyle.margin.left + ((bgWidth - totalWidth) / 2.0f);
-        float availableH = h - containerStyle.margin.top - containerStyle.margin.bottom;
-        float drawY = y + containerStyle.margin.top + ((availableH - iconSize) / 2.0f);
+        float totalLength = (count * itemBoxStride) + ((count - 1) * itemSpacing);
 
-        float targetX = -1.0f;
-        float searchCursor = startX;
+        float startMain = 0.0f;
+        float fixedCross = 0.0f; // Center coordinate on the cross axis
+
+        if (isVertical) {
+            float bgHeight = h - containerStyle.margin.top - containerStyle.margin.bottom;
+            startMain = y + containerStyle.margin.top + ((bgHeight - totalLength) / 2.0f);
+
+            float bgWidth = w - containerStyle.margin.left - containerStyle.margin.right;
+            fixedCross = x + containerStyle.margin.left + ((bgWidth - iconSize) / 2.0f);
+        }
+        else {
+            float bgWidth = w - containerStyle.margin.left - containerStyle.margin.right;
+            startMain = x + containerStyle.margin.left + ((bgWidth - totalLength) / 2.0f);
+
+            float bgHeight = h - containerStyle.margin.top - containerStyle.margin.bottom;
+            fixedCross = y + containerStyle.margin.top + ((bgHeight - iconSize) / 2.0f);
+        }
+
+        float targetPos = -1.0f;
+        float searchCursor = startMain;
 
         HWND activeWin = (optimisticHwnd && (GetTickCount64() - optimisticTime < 500)) ? optimisticHwnd : ctx.foregroundWindow;
         const DockItem *activeItem = nullptr;
@@ -412,18 +435,18 @@ public:
                 }
             }
             if (isGroupActive) {
-                targetX = searchCursor;
+                targetPos = searchCursor;
                 activeItem = &item;
                 break;
             }
-            searchCursor += (itemBoxWidth + itemSpacing);
+            searchCursor += (itemBoxStride + itemSpacing);
         }
 
-        if (targetX >= 0.0f) {
+        if (targetPos >= 0.0f) {
             ULONGLONG now = GetTickCount64();
 
             if (!isHighlightInitialized) {
-                currentHighlightX = targetX;
+                currentHighlightPos = targetPos;
                 isHighlightInitialized = true;
             }
             else {
@@ -431,10 +454,11 @@ public:
                 if (dt > 0.1f) dt = 0.016f;
                 float damping = 1.0f - std::pow(0.01f, dt * (animSpeed * 10.0f));
 
-                float diff = targetX - currentHighlightX;
-                currentHighlightX += diff * damping;
+                float diff = targetPos - currentHighlightPos;
+                currentHighlightPos += diff * damping;
                 if (abs(diff) < 0.5f) {
-                    currentHighlightX = targetX;
+                    currentHighlightPos = targetPos;
+                    if (activeItem) InvalidateRect(ctx.hwnd, NULL, FALSE);
                 }
                 else InvalidateRect(ctx.hwnd, NULL, FALSE);
             }
@@ -447,12 +471,29 @@ public:
                 else if (s.has_bg) activeColor = s.bg;
             }
 
-            float barWidth = 16.0f;
-            if (activeItem && activeItem->windows.size() > 1) barWidth = 28.0f;
+            // Draw Indicator
+            float barThickness = 3.0f;
+            float barLength = 16.0f;
+            if (activeItem && activeItem->windows.size() > 1) barLength = 28.0f;
 
-            D2D1_ROUNDED_RECT activeRect = D2D1::RoundedRect(
-                D2D1::RectF(currentHighlightX + (itemBoxWidth / 2) - (barWidth / 2), drawY + iconSize + 6,
-                    currentHighlightX + (itemBoxWidth / 2) + (barWidth / 2), drawY + iconSize + 9), 2, 2);
+            D2D1_ROUNDED_RECT activeRect;
+
+            if (isVertical) {
+                // Vertical Bar indicator: Left or Right side based on alignment
+                bool onRight = (config.position == "left");
+                float barX = onRight ? (fixedCross + iconSize + 6) : (fixedCross - 6 - barThickness);
+
+                float barY = currentHighlightPos + (itemBoxStride / 2) - (barLength / 2);
+                activeRect = D2D1::RoundedRect(D2D1::RectF(barX, barY, barX + barThickness, barY + barLength), 2, 2);
+            }
+            else {
+                // Horizontal Bar indicator: Top or Bottom
+                bool onBottom = (config.position == "top");
+                float barY = onBottom ? (fixedCross + iconSize + 6) : (fixedCross - 6 - barThickness);
+
+                float barX = currentHighlightPos + (itemBoxStride / 2) - (barLength / 2);
+                activeRect = D2D1::RoundedRect(D2D1::RectF(barX, barY, barX + barLength, barY + barThickness), 2, 2);
+            }
 
             ctx.bgBrush->SetColor(activeColor);
             ctx.rt->FillRoundedRectangle(activeRect, ctx.bgBrush);
@@ -462,18 +503,26 @@ public:
             if (optimisticHwnd) InvalidateRect(ctx.hwnd, NULL, FALSE);
         }
 
-        float drawCursor = startX;
+        float drawCursor = startMain;
         for (const auto &item : stableList) {
-
             for (HWND hw : item.windows) {
                 if (hw == ctx.foregroundWindow && attentionWindows.count(hw)) attentionWindows.erase(hw);
             }
 
             ID2D1Bitmap *bmp = GetItemIcon(ctx, item);
-            float iconX = drawCursor + itemStyle.padding.left;
+
+            float iconX, iconY;
+            if (isVertical) {
+                iconX = fixedCross; // Centered
+                iconY = drawCursor + itemStyle.padding.top;
+            }
+            else {
+                iconX = drawCursor + itemStyle.padding.left;
+                iconY = fixedCross; // Centered
+            }
 
             if (bmp) {
-                D2D1_RECT_F dest = D2D1::RectF(iconX, drawY, iconX + iconSize, drawY + iconSize);
+                D2D1_RECT_F dest = D2D1::RectF(iconX, iconY, iconX + iconSize, iconY + iconSize);
                 float opacity = item.windows.empty() ? 0.5f : 1.0f;
                 ctx.rt->DrawBitmap(bmp, dest, opacity);
             }
@@ -482,17 +531,33 @@ public:
             if (winCount > 0 && activeItem != &item) {
                 int dotsToShow = (std::min)(winCount, 3);
                 float dotSize = 4.0f; float dotGap = 2.0f;
-                float totalDotsWidth = (dotsToShow * dotSize) + ((dotsToShow - 1) * dotGap);
+                float totalDotsLen = (dotsToShow * dotSize) + ((dotsToShow - 1) * dotGap);
 
-                float clusterStartX = iconX + (iconSize / 2.0f) - (totalDotsWidth / 2.0f);
-                float dotY = drawY + iconSize + 7.0f;
+                if (isVertical) {
+                    // Vertical: Dots on the side
+                    bool onRight = (config.position == "left");
+                    float dotX = onRight ? (iconX + iconSize + 7.0f) : (iconX - 7.0f - dotSize);
+                    float clusterStartY = iconY + (iconSize / 2.0f) - (totalDotsLen / 2.0f);
 
-                for (int d = 0; d < dotsToShow; d++) {
-                    float dx = clusterStartX + (d * (dotGap + dotSize));
-                    D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(dx + (dotSize / 2), dotY + (dotSize / 2)), dotSize / 2, dotSize / 2);
+                    for (int d = 0; d < dotsToShow; d++) {
+                        float dy = clusterStartY + (d * (dotGap + dotSize));
+                        D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(dotX + (dotSize / 2), dy + (dotSize / 2)), dotSize / 2, dotSize / 2);
+                        ctx.bgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f));
+                        ctx.rt->FillEllipse(dot, ctx.bgBrush);
+                    }
+                }
+                else {
+                    // Horizontal: Dots on bottom/top
+                    bool onBottom = (config.position == "top");
+                    float dotY = onBottom ? (iconY + iconSize + 7.0f) : (iconY - 7.0f - dotSize);
+                    float clusterStartX = iconX + (iconSize / 2.0f) - (totalDotsLen / 2.0f);
 
-                    ctx.bgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f));
-                    ctx.rt->FillEllipse(dot, ctx.bgBrush);
+                    for (int d = 0; d < dotsToShow; d++) {
+                        float dx = clusterStartX + (d * (dotGap + dotSize));
+                        D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(dx + (dotSize / 2), dotY + (dotSize / 2)), dotSize / 2, dotSize / 2);
+                        ctx.bgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f));
+                        ctx.rt->FillEllipse(dot, ctx.bgBrush);
+                    }
                 }
             }
 
@@ -501,12 +566,12 @@ public:
                 if (attentionWindows.count(hw)) { hasAttention = true; break; }
             }
             if (hasAttention) {
-                D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(iconX + iconSize - 2, drawY + 2), 3, 3);
+                D2D1_ELLIPSE dot = D2D1::Ellipse(D2D1::Point2F(iconX + iconSize - 2, iconY + 2), 3, 3);
                 ctx.bgBrush->SetColor(D2D1::ColorF(D2D1::ColorF::Red));
                 ctx.rt->FillEllipse(dot, ctx.bgBrush);
             }
 
-            drawCursor += (itemBoxWidth + itemSpacing);
+            drawCursor += (itemBoxStride + itemSpacing);
         }
 
         bool shouldShow = false;
@@ -527,13 +592,21 @@ public:
                     float dpi = (float)GetDpiForWindow(ctx.hwnd);
                     float scale = dpi / 96.0f;
 
-                    float iconLogicalX = startX + (previewState.groupIndex * (itemBoxWidth + itemSpacing));
-                    POINT pt = { (LONG)(iconLogicalX * scale), (LONG)(y * scale) };
+                    float logicalMain = startMain + (previewState.groupIndex * (itemBoxStride + itemSpacing));
+
+                    POINT pt;
+                    if (isVertical) {
+                        pt = { (LONG)(fixedCross * scale), (LONG)(logicalMain * scale) };
+                    }
+                    else {
+                        pt = { (LONG)(logicalMain * scale), (LONG)(fixedCross * scale) };
+                    }
+
                     ClientToScreen(ctx.hwnd, &pt);
                     previewState.lastIconRect = {
                         pt.x, pt.y,
-                        pt.x + (LONG)(itemBoxWidth * scale),
-                        pt.y + (LONG)(iconSize * scale)
+                        pt.x + (LONG)(itemBoxSize * scale),
+                        pt.y + (LONG)(itemBoxSize * scale)
                     };
 
                     bool inSafeZone = IsMouseInPreviewOrGap();
@@ -551,7 +624,8 @@ public:
                             hPreviewIcon = (HICON)SendMessage(hIconWin, WM_GETICON, ICON_BIG, 0);
                             if (!hPreviewIcon) hPreviewIcon = (HICON)GetClassLongPtr(hIconWin, GCLP_HICON);
                         }
-                        m_previewWin->Update(ctx.hwnd, item.title, item.windows, hPreviewIcon, previewState.lastIconRect, colors);
+                        m_previewWin->Update(ctx.hwnd, item.title, item.windows,
+                            hPreviewIcon, previewState.lastIconRect, colors, config.position);
                     }
                     else {
                         previewState.active = false;
@@ -564,10 +638,6 @@ public:
 
         if (!shouldShow && m_previewWin) m_previewWin->Hide();
 
-        // --- FIX: Keep Alive Timer ---
-        // If we have an active app, reset the timer to 60 frames (approx 1 sec).
-        // If activeItem is null (app closed), this timer continues to decrement,
-        // forcing redraws until PruneDeadWindows successfully detects the closed window.
         if (activeItem) {
             keepAliveFrames = 60;
         }

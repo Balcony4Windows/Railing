@@ -6,13 +6,14 @@
 #include <string>
 #include "AudioBackend.h"
 #include "ThemeTypes.h"
+#include "IFlyout.h"
 
 struct AudioDeviceInfo {
     std::wstring name;
     std::wstring id;
 };
 
-class VolumeFlyout {
+class VolumeFlyout : IFlyout {
 public:
     VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config);
     ~VolumeFlyout();
@@ -20,10 +21,12 @@ public:
     HWND hwnd = nullptr;
 
     void Toggle(RECT iconRect); // Open/Close
-    bool IsVisible();
+    void Hide() override;
     enum class AnimationState { Hidden, Entering, Visible, Exiting };
     AnimationState animState = AnimationState::Hidden;
-
+    bool IsVisible() override {
+        return (animState != AnimationState::Hidden);
+    }
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 

@@ -233,8 +233,6 @@ private:
 
         RECT rcUnion;
         UnionRect(&rcUnion, &rcWin, &m_safeIconRect);
-
-        // Use a 10px buffer to handle the gap crossing
         InflateRect(&rcUnion, 10, 10);
 
         return PtInRect(&rcUnion, pt);
@@ -350,15 +348,11 @@ public:
     }
 
     void Update(HWND parentBar, const std::wstring &title, const std::vector<HWND> &windows, HICON hIcon,
-        RECT iconScreenRect, DockPreviewColors colors)
+        RECT iconScreenRect, DockPreviewColors colors, const std::string &dockPosition)
     {
         m_hParent = parentBar;
         m_safeIconRect = iconScreenRect;
 
-        // --- THE FIX: ZOMBIE CHECK ---
-        // If the main app is trying to open/update us (Zombie resurrection),
-        // but the mouse is physically far away, we refuse to open.
-        // This stops the infinite open/close loop caused by active=true sticking in the main app.
         if (!CheckMouseInSafeZone()) {
             if (m_isVisible) Hide();
             return;
@@ -416,9 +410,34 @@ public:
         if (showCount > MAX_ITEMS_SHOWN) showCount = MAX_ITEMS_SHOWN;
         float calculatedHeight = lm.headerHeight + lm.paddingY + (showCount * lm.rowHeight) + lm.paddingY;
 
-        int x = iconScreenRect.left + ((iconScreenRect.right - iconScreenRect.left) / 2) - (int)(calculatedWidth / 2);
-        int y = iconScreenRect.top - (int)calculatedHeight - 10;
+        int x, y;
+        int gap = 10;
+        HMONITOR hMon = MonitorFromRect(&iconScreenRect, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfo(hMon, &mi);
 
+        if (dockPosition == "left") {
+            x = iconScreenRect.right + gap;
+            y = iconScreenRect.top + ((iconScreenRect.bottom - iconScreenRect.top) / 2) - (int)(calculatedHeight / 2);
+        }
+        else if (dockPosition == "right") {
+            x = iconScreenRect.left - (int)calculatedWidth - gap;
+            y = iconScreenRect.top + ((iconScreenRect.bottom - iconScreenRect.top) / 2) - (int)(calculatedHeight / 2);
+        }
+        else if (dockPosition == "top") {
+            x = iconScreenRect.left + ((iconScreenRect.right - iconScreenRect.left) / 2) - (int)(calculatedWidth / 2);
+            y = iconScreenRect.bottom + gap;
+        }
+        else {
+            x = iconScreenRect.left + ((iconScreenRect.right - iconScreenRect.left) / 2) - (int)(calculatedWidth / 2);
+            y = iconScreenRect.top - (int)calculatedHeight - gap;
+        }
+
+        if (y < mi.rcWork.top) y = mi.rcWork.top + gap;
+        if (y + (int)calculatedHeight > mi.rcWork.bottom) y = mi.rcWork.bottom - (int)calculatedHeight - gap;
+        if (x < mi.rcWork.left) x = mi.rcWork.left + gap;
+        if (x + (int)calculatedWidth > mi.rcWork.right) x = mi.rcWork.right - (int)calculatedWidth - gap;
+        
         SetWindowPos(m_hwnd, HWND_TOPMOST, x, y, (int)calculatedWidth, (int)calculatedHeight, SWP_NOACTIVATE | SWP_SHOWWINDOW);
 
         HRGN hRgn = CreateRoundRectRgn(0, 0, (int)calculatedWidth + 1, (int)calculatedHeight + 1, (int)lm.cornerRadius, (int)lm.cornerRadius);

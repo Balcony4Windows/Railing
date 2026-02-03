@@ -47,7 +47,7 @@ TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImaging
     : pFactory(sharedFactory), pWICFactory(sharedWIC), tooltips(tooltips) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     this->style = config.global;
-
+    FlyoutManager::Get().Register(this);
     WNDCLASS wc = {};
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInst;
@@ -80,6 +80,7 @@ TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImaging
 }
 
 TrayFlyout::~TrayFlyout() {
+	FlyoutManager::Get().Unregister(this);
     if (pRenderTarget) pRenderTarget->Release();
     if (pBgBrush) pBgBrush->Release();
     if (pHoverBrush) pHoverBrush->Release();
@@ -93,29 +94,15 @@ TrayFlyout::~TrayFlyout() {
 void TrayFlyout::Toggle(RECT iconRect) {
     ULONGLONG now = GetTickCount64();
     if (now - lastAutoCloseTime < 200) return;
-
-    if (animState == AnimationState::Visible || animState == AnimationState::Entering) {
-        if (style.animation.enabled) {
-            animState = AnimationState::Exiting;
-            lastAnimTime = now;
-            InvalidateRect(hwnd, NULL, FALSE);
-        }
-        else {
-            animState = AnimationState::Hidden;
-            ShowWindow(hwnd, SW_HIDE);
-            for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-            cachedBitmaps.clear();
-        }
-    }
+    if (IsVisible()) Hide();
     else {
-        // Fetch Data
+        FlyoutManager::Get().CloseOthers(this);
         currentIcons = TrayBackend::Get().GetIcons();
         UpdateLayout();
 
 		for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
 		cachedBitmaps.clear();
 
-        // Dynamic Columns
         if (currentIcons.size() <= 5) layoutCols = max(1, (int)currentIcons.size());
         else if (currentIcons.size() <= 9) layoutCols = 3;
         else layoutCols = 5;
@@ -127,13 +114,9 @@ void TrayFlyout::Toggle(RECT iconRect) {
 
         int iconPx = (int)layoutIconSize;
         int padPx = (int)layoutPadding;
-
         int width = (layoutCols * iconPx) + ((layoutCols + 1) * padPx);
-
-        // FIX: Add extra buffer to height to prevent rounded corners from clipping icons
         int height = (rows * iconPx) + ((rows + 1) * padPx) + 12;
 
-        // Positioning
         HMONITOR hMonitor = MonitorFromRect(&iconRect, MONITOR_DEFAULTTONEAREST);
         MONITORINFO mi = { sizeof(mi) };
         GetMonitorInfo(hMonitor, &mi);
@@ -153,7 +136,6 @@ void TrayFlyout::Toggle(RECT iconRect) {
         lastAnimTime = now;
 
         int r = (int)style.radius;
-        // Make the region slightly larger than content to be safe
         HRGN hRgn = (r > 0) ? CreateRoundRectRgn(0, 0, width + 1, height + 1, r * 2, r * 2) : CreateRectRgn(0, 0, width, height);
         SetWindowRgn(hwnd, hRgn, TRUE);
 
@@ -168,6 +150,23 @@ void TrayFlyout::Toggle(RECT iconRect) {
         InvalidateRect(hwnd, NULL, FALSE);
     }
 }
+void TrayFlyout::Hide()
+{
+    if (animState == AnimationState::Hidden || animState == AnimationState::Exiting) return;
+	ULONGLONG now = GetTickCount64();
+    if (style.animation.enabled) {
+        animState = AnimationState::Exiting;
+        lastAnimTime = now;
+		InvalidateRect(hwnd, NULL, FALSE);
+    }
+    else {
+        animState = AnimationState::Hidden;
+		ShowWindow(hwnd, SW_HIDE);
+        for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
+		cachedBitmaps.clear();
+    }
+}
+
 void TrayFlyout::UpdateAnimation() {
     if (!style.animation.enabled || animState == AnimationState::Visible || animState == AnimationState::Hidden) return;
 
@@ -218,7 +217,6 @@ void TrayFlyout::UpdateLayout() {
     int col = 0;
     int row = 0;
 
-    // Ensure these are set correctly based on current icon count
     if (currentIcons.size() <= 5) layoutCols = max(1, (int)currentIcons.size());
     else if (currentIcons.size() <= 9) layoutCols = 3;
     else layoutCols = 5;
@@ -284,16 +282,18 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
         return 0;
     case WM_ACTIVATE:
         if (LOWORD(wParam) == WA_INACTIVE && self && self->animState != AnimationState::Hidden) {
+            ULONGLONG now = GetTickCount64();
+            if (now - self->lastAutoCloseTime < 200) return 0;
             if (self->ignoreNextDeactivate) { // Inside an icon
                 self->ignoreNextDeactivate = false;
                 return 0;
             }
             if (self->animState != AnimationState::Exiting) {
-                self->lastAutoCloseTime = GetTickCount64();
+                self->lastAutoCloseTime = now;
 
                 if (self->style.animation.enabled) {
                     self->animState = AnimationState::Exiting;
-                    self->lastAnimTime = GetTickCount64();
+                    self->lastAnimTime = now;
                     InvalidateRect(hwnd, NULL, FALSE);
                 }
                 else {
@@ -437,16 +437,17 @@ void TrayFlyout::Draw() {
     pRenderTarget->Clear(D2D1::ColorF(0, 0, 0, 0));
 
     if (pBgBrush && pHoverBrush && pBorderBrush) {
-        // Update Brush Alpha
         D2D1_COLOR_F bgColor = style.background;
+        if (bgColor.a > 0.6f) bgColor.a = 0.6f;
         bgColor.a *= currentAlpha;
+        if (bgColor.a <= 0.001f) bgColor = D2D1::ColorF(0.08f, 0.08f, 0.1f, 0.6f * currentAlpha);
+        
         pBgBrush->SetColor(bgColor);
         pHoverBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f * currentAlpha));
 
-        // Background
         D2D1_RECT_F bg = D2D1::RectF(0, 0, (float)rc.right, (float)rc.bottom);
         float r = style.radius;
-        if (bgColor.a > 0.0f) pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(bg, r, r), pBgBrush);
+        pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(bg, r, r), pBgBrush);
 
         if (style.borderWidth > 0.0f && style.borderColor.a > 0.0f) {
             D2D1_COLOR_F bColor = style.borderColor;

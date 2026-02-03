@@ -1,19 +1,20 @@
 #pragma once
-#include "NetworkBackend.h"
-#include "ThemeTypes.h"
 #include <dwrite.h>
 #include <windowsx.h>
 #include <mutex>
+#include "NetworkBackend.h"
+#include "ThemeTypes.h"
+#include "IFlyout.h"
 
 #define WM_NET_SCAN_COMPLETE (WM_USER + 101)
 
-class NetworkFlyout
+class NetworkFlyout : IFlyout
 {
 public:
 	HWND hwnd = NULL;
     HINSTANCE hInst;
 
-    bool IsVisible() { return IsWindowVisible(hwnd); }
+    bool IsVisible() override { return (animState != AnimationState::Hidden); }
 
 	NetworkBackend backend;
 	std::vector<WifiNetwork> cachedNetworks;
@@ -66,7 +67,6 @@ public:
     bool isAllSelected = false; // Ctrl + A
     std::wstring GetClipboardText();
     void SetClipboardText(const std::wstring &text);
-    bool HitTestButton(int index, float lx, float ly);
     bool OnSetCursor(int x, int y);
 
     void PositionWindow(RECT anchorRect);
@@ -103,9 +103,8 @@ public:
     ~NetworkFlyout();
 
     void Toggle(RECT anchorRect);
-
+    void Hide() override;
     void CreateDeviceResources();
-
     void Draw();
 
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -150,7 +149,7 @@ public:
                 SetCapture(hwnd);
                 return 0;
             case WM_LBUTTONUP:
-                ReleaseCapture(); 
+                ReleaseCapture();
                 self->isDraggingScrollbar = false;
                 return 0;
             case WM_MOUSEMOVE:
@@ -182,9 +181,11 @@ public:
             case WM_ACTIVATE:
             case WM_KILLFOCUS:
                 if (LOWORD(wParam) == WA_INACTIVE && self->animState != AnimationState::Hidden) {
+                    ULONGLONG now = GetTickCount64();
+                    if (now - self->lastAutoCloseTime < 200) return 0;
                     self->animState = AnimationState::Exiting;
-                    self->lastAnimTime = GetTickCount64();
-                    self->lastAutoCloseTime = GetTickCount64();
+                    self->lastAnimTime = now;
+                    self->lastAutoCloseTime = now;
                     InvalidateRect(hwnd, NULL, FALSE);
                 }
                 return 0;

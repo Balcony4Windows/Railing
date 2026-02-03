@@ -20,6 +20,7 @@ ULONGLONG VolumeFlyout::lastAnimTime = 0;
 VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config)
     : hInst(hInst), pFactory(pSharedFactory), pWriteFactory(pSharedWriteFactory), pTextFormat(pFormat)
 {
+	FlyoutManager::Get().Register(this);
     this->style = config.global;
     WNDCLASS wc = { 0 };
     if (!GetClassInfo(hInst, L"VolumeFlyoutClass", &wc)) {
@@ -32,6 +33,11 @@ VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWrit
 }
 
 VolumeFlyout::~VolumeFlyout() {
+    FlyoutManager::Get().Unregister(this);
+    if (hwnd) {
+        DestroyWindow(hwnd);
+        hwnd = nullptr;
+	}
 }
 
 void VolumeFlyout::PositionWindow(RECT iconRect) {
@@ -82,18 +88,9 @@ void VolumeFlyout::Toggle(RECT iconRect) {
         SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
     }
 
-    if (animState == AnimationState::Visible || animState == AnimationState::Entering) {
-        if (style.animation.enabled) {
-            animState = AnimationState::Exiting;
-            lastAnimTime = now;
-            InvalidateRect(hwnd, NULL, FALSE);
-        }
-        else {
-            animState = AnimationState::Hidden;
-            ShowWindow(hwnd, SW_HIDE);
-        }
-    }
+    if (IsVisible()) Hide();
     else {
+		FlyoutManager::Get().CloseOthers(this);
         audio.EnsureInitialized(hwnd);
         RefreshDevices();
         PositionWindow(iconRect);
@@ -126,8 +123,22 @@ void VolumeFlyout::Toggle(RECT iconRect) {
     }
 }
 
-bool VolumeFlyout::IsVisible() {
-    return IsWindowVisible(hwnd);
+void VolumeFlyout::Hide()
+{
+    if (animState == AnimationState::Visible || animState == AnimationState::Entering) {
+        ULONGLONG now = GetTickCount64();
+        if (style.animation.enabled) {
+            animState = AnimationState::Exiting;
+            lastAnimTime = now;
+            lastAutoCloseTime = now;
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
+        else {
+            animState = AnimationState::Hidden;
+            ShowWindow(hwnd, SW_HIDE);
+            lastAutoCloseTime = now;
+        }
+    }
 }
 
 LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -272,24 +283,18 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             }
             return 0;
         case WM_ACTIVATE:
+        case WM_KILLFOCUS:
             if (LOWORD(wParam) == WA_INACTIVE) {
                 if (self->animState != AnimationState::Hidden && self->animState != AnimationState::Exiting) {
+                    ULONGLONG now = GetTickCount64();
+                    if (now - self->lastAutoCloseTime < 200) return 0;
                     self->animState = AnimationState::Exiting;
-                    self->lastAnimTime = GetTickCount64();
-                    self->lastAutoCloseTime = GetTickCount64();
+                    self->lastAnimTime = now;
+                    self->lastAutoCloseTime = now;
                     InvalidateRect(hwnd, NULL, FALSE);
                 }
             }
             return 0;
-
-        case WM_KILLFOCUS:
-            if (self->animState != AnimationState::Hidden) {
-                self->animState = AnimationState::Exiting;
-                self->lastAnimTime = GetTickCount64();
-                InvalidateRect(hwnd, NULL, FALSE);
-            }
-            return 0;
-
         case WM_DESTROY:
             if (self->pRenderTarget) { self->pRenderTarget->Release(); self->pRenderTarget = nullptr; }
             if (self->pBgBrush) { self->pBgBrush->Release();      self->pBgBrush = nullptr; }

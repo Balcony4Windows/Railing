@@ -86,7 +86,7 @@ void TooltipHandler::Initialize(HWND hParent) {
 	SetLayeredWindowAttributes(hwndTooltip, 0, 255, LWA_ALPHA);
 }
 
-void TooltipHandler::Show(const std::wstring &text, RECT iconRect, std::string &position, float scale) {
+void TooltipHandler::Show(const std::wstring &text, RECT iconRect, const std::string &position, float scale) {
     if (!hwndTooltip) return;
     if (text == currentText && IsWindowVisible(hwndTooltip)) return;
 
@@ -94,30 +94,62 @@ void TooltipHandler::Show(const std::wstring &text, RECT iconRect, std::string &
     SetWindowTextW(hwndTooltip, text.c_str());
 
     SIZE size = GetTextSize(text);
-    int width = size.cx + 24;
-    int height = size.cy + 16;
+    int tipW = size.cx + 24;
+    int tipH = size.cy + 16;
 
-    int iconWidth = (int)((iconRect.right - iconRect.left) * scale);
-    int iconLeft = (int)(iconRect.left * scale);
-    int clientX = iconLeft + (iconWidth / 2) - (width / 2);
+    RECT physRect = {
+        (LONG)(iconRect.left * scale),
+        (LONG)(iconRect.top * scale),
+        (LONG)(iconRect.right * scale),
+        (LONG)(iconRect.bottom * scale)
+    };
 
-    POINT ptScreen = { clientX, 0 };
-    ClientToScreen(hwndParent, &ptScreen);
+    POINT tl = { physRect.left, physRect.top };
+    POINT br = { physRect.right, physRect.bottom };
+    ClientToScreen(hwndParent, &tl);
+    ClientToScreen(hwndParent, &br);
 
+    int iconScreenCenterX = tl.x + ((br.x - tl.x) / 2);
+    int iconScreenCenterY = tl.y + ((br.y - tl.y) / 2);
     RECT barRect;
     GetWindowRect(hwndParent, &barRect);
-    int tooltipY;
 
-    if (position == "bottom") {
-        tooltipY = barRect.top - height - 4;
-    } else tooltipY = barRect.bottom + 4;
+    int finalX = 0;
+    int finalY = 0;
+    int gap = 10;
 
-    if (ptScreen.x < 0) ptScreen.x = 0;
+    if (position == "left") {
+        finalX = barRect.right + gap;
+        finalY = iconScreenCenterY - (tipH / 2);
+    }
+    else if (position == "right") {
+        finalX = barRect.left - tipW - gap;
+        finalY = iconScreenCenterY - (tipH / 2);
+    }
+    else if (position == "top") {
+        finalX = iconScreenCenterX - (tipW / 2);
+        finalY = barRect.bottom + gap;
+    }
+    else {
+        finalX = iconScreenCenterX - (tipW / 2);
+        finalY = barRect.top - tipH - gap;
+    }
 
-    HRGN hRgn = CreateRoundRectRgn(0, 0, width, height, 14, 14);
+    HMONITOR hMon = MonitorFromRect(&barRect, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi = { sizeof(mi) };
+    GetMonitorInfo(hMon, &mi);
+
+    int padding = 4;
+    if (finalX < mi.rcWork.left + padding) finalX = mi.rcWork.left + padding;
+    if (finalX + tipW > mi.rcWork.right - padding) finalX = mi.rcWork.right - tipW - padding;
+
+    if (finalY < mi.rcWork.top + padding) finalY = mi.rcWork.top + padding;
+    if (finalY + tipH > mi.rcWork.bottom - padding) finalY = mi.rcWork.bottom - tipH - padding;
+
+    HRGN hRgn = CreateRoundRectRgn(0, 0, tipW, tipH, 14, 14);
     SetWindowRgn(hwndTooltip, hRgn, TRUE);
 
-    SetWindowPos(hwndTooltip, HWND_TOPMOST, ptScreen.x, tooltipY, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(hwndTooltip, HWND_TOPMOST, finalX, finalY, tipW, tipH, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(hwndTooltip, NULL, TRUE);
 }
 

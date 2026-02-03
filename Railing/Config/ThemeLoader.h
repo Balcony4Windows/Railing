@@ -84,7 +84,7 @@ public:
 			mod.type = val.value("type", "custom");
 			mod.format = val.value("format", "");
 			mod.interval = val.value("interval", 0);
-			mod.orientation = val.value("orientation", "horizontal");
+			mod.position = val.value("position", config.global.position);
 			mod.latitude = val.value("latitude", "");
 			mod.longitude = val.value("longitude", "");
 			mod.tempFormat = val.value("temp_format", "fahrenheit");

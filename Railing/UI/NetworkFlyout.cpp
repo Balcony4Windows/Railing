@@ -21,6 +21,7 @@ NetworkFlyout::NetworkFlyout(HINSTANCE hInst,
     ThemeConfig &theme)
     : hInst(hInst), pFactory(pFact), pWriteFactory(pWFact), pTextFormat(pTxt), pIconFormat(pIcon), theme(theme)
 {
+	FlyoutManager::Get().Register(this);
     WNDCLASS wc = {};
     if (!GetClassInfo(hInst, L"RailingNetworkFlyout", &wc)) {
         wc.lpfnWndProc = NetworkFlyout::WndProc;
@@ -32,6 +33,7 @@ NetworkFlyout::NetworkFlyout(HINSTANCE hInst,
 }
 
 NetworkFlyout::~NetworkFlyout() {
+    FlyoutManager::Get().Unregister(this);
     if (pRenderTarget) pRenderTarget->Release();
     if (pTextBrush) pTextBrush->Release();
     if (pBgBrush) pBgBrush->Release();
@@ -208,7 +210,6 @@ void NetworkFlyout::PositionWindow(RECT anchorRect) {
 void NetworkFlyout::Toggle(RECT anchorRect) {
     ULONGLONG now = GetTickCount64();
     if (now - lastAutoCloseTime < 200) return;
-
     if (!hwnd) {
         hwnd = CreateWindowEx(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
@@ -224,18 +225,9 @@ void NetworkFlyout::Toggle(RECT anchorRect) {
         SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
     }
 
-    if (animState == AnimationState::Visible || animState == AnimationState::Entering) {
-        if (theme.global.animation.enabled) {
-            animState = AnimationState::Exiting;
-            lastAnimTime = now;
-            InvalidateRect(hwnd, NULL, FALSE);
-        }
-        else {
-            animState = AnimationState::Hidden;
-            ShowWindow(hwnd, SW_HIDE);
-        }
-    }
+    if (IsVisible()) Hide();
     else {
+		FlyoutManager::Get().CloseOthers(this);
         scrollOffset = 0;
         selectedIndex = -1;
         passwordBuffer = L"";
@@ -295,9 +287,25 @@ void NetworkFlyout::Toggle(RECT anchorRect) {
         SetWindowPos(hwnd, HWND_TOPMOST, targetX, targetY + (int)currentOffset, w, h, SWP_SHOWWINDOW);
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
-
         if (pRenderTarget) pRenderTarget->Resize(D2D1::SizeU(w, h));
         InvalidateRect(hwnd, NULL, FALSE);
+    }
+}
+
+void NetworkFlyout::Hide()
+{
+	if (animState == AnimationState::Hidden || animState == AnimationState::Exiting) return;
+	ULONGLONG now = GetTickCount64();
+    if (theme.global.animation.enabled) {
+        animState = AnimationState::Exiting;
+        lastAnimTime = now;
+        lastAutoCloseTime = now;
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+    else {
+        animState = AnimationState::Hidden;
+        ShowWindow(hwnd, SW_HIDE);
+        lastAutoCloseTime = now;
     }
 }
 

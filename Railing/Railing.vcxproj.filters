@@ -164,6 +164,9 @@
     <ClInclude Include="DockPreviewWindow.h">
       <Filter>UI</Filter>
     </ClInclude>
+    <ClInclude Include="IFlyout.h">
+      <Filter>UI</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">

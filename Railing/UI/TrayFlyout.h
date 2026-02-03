@@ -6,16 +6,18 @@
 #include "ThemeTypes.h"
 #include "TooltipHandler.h"
 #include "TrayBackend.h"
+#include "IFlyout.h"
 
-class TrayFlyout {
+class TrayFlyout : IFlyout {
 public:
     TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config);
     ~TrayFlyout();
 
     HWND hwnd = nullptr;
     void Toggle(RECT iconRect);
+    void Hide() override;
     void Draw();
-    bool IsVisible() { return IsWindowVisible(hwnd); }
+    bool IsVisible() override { return (animState != AnimationState::Hidden); }
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 

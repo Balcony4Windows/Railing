@@ -95,7 +95,7 @@ struct ModuleConfig {
     std::vector<Threshold> thresholds; // If type == "cpu" or "battery"
     std::map<std::string, Style> states; // If type == "workspaces" (active/urgent)
     Style itemStyle; // For workspace buttons
-    std::string orientation = "horizontal";
+    std::string position = "";
 
     float dockIconSize = 24.0f;
     float dockSpacing = 8.0f;

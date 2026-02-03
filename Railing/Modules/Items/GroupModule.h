@@ -11,21 +11,30 @@ public:
 
 	float GetContentWidth(RenderContext &ctx) override
 	{
+		bool isVertical = (config.position == "left" || config.position == "right");
 		Style s = config.baseStyle;
-		float totalW = 0.0f;
-		totalW += s.padding.left;
+
+		float totalSize = 0.0f;
+		totalSize += isVertical ? s.padding.top : s.padding.left;
+
 		for (auto *child : children) {
+			child->config.position = config.position;
+
 			child->CalculateWidth(ctx);
-			totalW += child->width;
+			totalSize += child->width;
 		}
-		totalW += s.padding.right;
-		totalW += s.margin.left + s.margin.right;
-		return totalW;
+
+		totalSize += isVertical ? s.padding.bottom : s.padding.right;
+		totalSize += isVertical ? (s.margin.top + s.margin.bottom) : (s.margin.left + s.margin.right);
+
+		return totalSize;
 	}
 
 	void RenderContent(RenderContext &ctx, float x, float y, float w, float h) override
 	{
+		bool isVertical = (config.position == "left" || config.position == "right");
 		Style s = GetEffectiveStyle();
+
 		if (s.has_bg) {
 			D2D1_RECT_F bgRect = D2D1::RectF(
 				x + s.margin.left,
@@ -37,14 +46,28 @@ public:
 			ctx.bgBrush->SetColor(s.bg);
 			ctx.rt->FillRoundedRectangle(rounded, ctx.bgBrush);
 		}
-		float cursor = x + s.margin.left + s.padding.left;
-		float topY = y + s.margin.top + s.padding.top;
-		float childH = h - s.margin.top - s.margin.bottom - s.padding.top - s.padding.bottom;
 
-		for (Module *child : children) {
-			child->cachedRect = D2D1::RectF(cursor, topY, cursor + child->width, topY + childH);
-			child->RenderContent(ctx, cursor, topY, child->width, childH);
-			cursor += child->width;
+		if (isVertical) {
+			float cursor = y + s.margin.top + s.padding.top;
+			float fixedX = x + s.margin.left + s.padding.left;
+			float childW = w - s.margin.left - s.margin.right - s.padding.left - s.padding.right;
+
+			for (Module *child : children) {
+				child->cachedRect = D2D1::RectF(fixedX, cursor, fixedX + childW, cursor + child->width);
+				child->RenderContent(ctx, fixedX, cursor, childW, child->width);
+				cursor += child->width;
+			}
+		}
+		else {
+			float cursor = x + s.margin.left + s.padding.left;
+			float fixedY = y + s.margin.top + s.padding.top;
+			float childH = h - s.margin.top - s.margin.bottom - s.padding.top - s.padding.bottom;
+
+			for (Module *child : children) {
+				child->cachedRect = D2D1::RectF(cursor, fixedY, cursor + child->width, fixedY + childH);
+				child->RenderContent(ctx, cursor, fixedY, child->width, childH);
+				cursor += child->width;
+			}
 		}
 	}
 };
