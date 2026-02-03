@@ -364,7 +364,10 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
 void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
     D2D1_RECT_F rectF;
     Module *m = HitTest(x, y, rectF);
-    if (!m || m->config.type != "dock") return;
+    if (!m || m->config.type != "dock") {
+        MainMenu::Show(hwnd, {x, y});
+        return;
+    }
     DockModule *dock = (DockModule *)m;
     float dpi = (float)GetDpiForWindow(hwnd);
     float scale = dpi / 96.0f;

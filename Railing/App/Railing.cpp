@@ -53,10 +53,10 @@ void Railing::CheckForConfigUpdate()
         }
         if (CompareFileTime(&lastConfigWriteTime, &fileInfo.ftLastWriteTime) != 0) {
             lastConfigWriteTime = fileInfo.ftLastWriteTime;
-            cachedConfig = ThemeLoader::Load("config.json");
+            cachedConfig = ThemeLoader::Load(currentConfigName.c_str());
 
             if (renderer) {
-                renderer->Reload();
+                renderer->Reload(currentConfigName.c_str());
                 renderer->Resize();
             }
 
@@ -78,7 +78,7 @@ bool Railing::Initialize(HINSTANCE hInstance)
     instance = this;
     hInst = hInstance;
 
-    cachedConfig = ThemeLoader::Load("config.json");
+    cachedConfig = ThemeLoader::Load(currentConfigName.c_str());
     this->pinnedApps = cachedConfig.pinnedPaths;
 
     if (Module::HasType(cachedConfig, "gpu")) gpuStats.Initialize();
@@ -368,6 +368,11 @@ LRESULT CALLBACK Railing::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
     case WM_MOUSEWHEEL:
         if (self->inputManager) self->inputManager->HandleScroll(hwnd, GET_WHEEL_DELTA_WPARAM(wParam));
         return 0;
+    case WM_COMMAND: {
+        UINT cmd = LOWORD(wParam);
+        MainMenu::HandleMenuCmd(hwnd, cmd);
+        return 0;
+    }
     case WM_TIMER:
         if (wParam == 1) {
             self->UpdateSystemStats();

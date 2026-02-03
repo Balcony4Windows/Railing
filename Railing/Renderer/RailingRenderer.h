@@ -37,7 +37,7 @@ public:
 
     SystemStatusData currentStats;
 
-    void Reload();
+    void Reload(const char *name = "config.json");
     void Draw(const std::vector<WindowInfo> &windows, const std::vector<std::wstring> &pinnedApps, HWND activeWindow);
     void Resize();
     static void EnableBlur(HWND hwnd, DWORD nColor);

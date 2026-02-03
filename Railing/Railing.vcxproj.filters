@@ -167,6 +167,7 @@
     <ClInclude Include="IFlyout.h">
       <Filter>UI</Filter>
     </ClInclude>
+    <ClInclude Include="MainMenu.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">
@@ -216,5 +217,6 @@
     <ClCompile Include="App\InputManager.cpp">
       <Filter>App</Filter>
     </ClCompile>
+    <ClCompile Include="MainMenu.cpp" />
   </ItemGroup>
 </Project>

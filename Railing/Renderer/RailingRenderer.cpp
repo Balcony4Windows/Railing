@@ -117,9 +117,9 @@ RailingRenderer::~RailingRenderer()
     if (pWriteFactory) pWriteFactory->Release();
 }
 
-void RailingRenderer::Reload()
+void RailingRenderer::Reload(const char *name)
 {
-    ThemeConfig newTheme = ThemeLoader::Load("config.json");
+    ThemeConfig newTheme = ThemeLoader::Load(name);
     this->theme = newTheme;
     for (Module *m : leftModules) delete m;
     for (Module *m : centerModules) delete m;

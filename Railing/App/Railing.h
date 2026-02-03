@@ -18,6 +18,7 @@
 #include "WorkspaceManager.h"
 #include "AudioCapture.h"
 #include "NetworkFlyout.h"
+#include "MainMenu.h"
 
 class InputManager;
 
@@ -35,6 +36,7 @@ public:
 	Railing();
 	~Railing();
 	static Railing *instance;
+	std::string currentConfigName = "config.json";
 	HWND hwndBar = nullptr;
 	HINSTANCE hInst = nullptr;
 	TooltipHandler tooltips;
@@ -64,6 +66,8 @@ public:
 	bool cachedWifiState = false;
 	bool cachedMute = false;
 
+	void UpdateSystemStats();
+
 	static std::string ToUtf8(const std::wstring &wstr) {
 		if (wstr.empty()) return std::string();
 		int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
@@ -72,32 +76,6 @@ public:
 		return strTo;
 	}
 
-	inline void SavePinnedApps() {
-		wchar_t exePath[MAX_PATH];
-		GetModuleFileNameW(NULL, exePath, MAX_PATH);
-		std::wstring path(exePath);
-		path = path.substr(0, path.find_last_of(L"\\/"));
-		std::wstring fullPathW = path + L"\\config.json";
-
-		nlohmann::json j;
-		std::ifstream i(fullPathW);
-		if (i.is_open()) {
-			try { i >> j; }
-			catch (...) {}
-			i.close();
-		}
-
-		j["pinned"] = nlohmann::json::array();
-		for (const auto &pPath : pinnedApps) {
-			j["pinned"].push_back(ToUtf8(pPath));
-		}
-
-		std::ofstream o(fullPathW);
-		if (o.is_open()) {
-			o << j.dump(2);
-			o.close();
-		}
-	}
 private:
 	HWND CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config);
 	void DrawBar(HWND hwnd);
@@ -144,7 +122,6 @@ private:
 	int cachedGpuTemp = 0;
 	int cachedCpuUsage = 0;
 	int cachedRamUsage = 0;
-	void UpdateSystemStats();
 
 	bool isHidden = false;
 	bool isHoveringBar = false;
