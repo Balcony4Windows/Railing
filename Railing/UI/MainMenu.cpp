@@ -1,5 +1,10 @@
 #include "MainMenu.h"
-#include <Railing.h>
+#include "BarInstance.h"
+#include "Railing.h"
+#include <shobjidl.h>
+#include <thread>
+#include <shtypes.h>
+#include <ShObjIdl_core.h>
 
 HMENU MainMenu::CreateTaskbarContextMenu()
 {
@@ -66,6 +71,9 @@ HMENU MainMenu::CreateTaskbarContextMenu()
 }
 
 void MainMenu::Show(HWND hwnd, POINT screenPt) {
+    wchar_t buf[128];
+    swprintf_s(buf, L"Clicked Point: {%d, %d}\n", screenPt.x, screenPt.y);
+    OutputDebugString(buf);
     HMENU menu = CreateTaskbarContextMenu();
     SetForegroundWindow(hwnd);
 
@@ -78,13 +86,16 @@ void MainMenu::Show(HWND hwnd, POINT screenPt) {
 }
 
 void MainMenu::HandleMenuCmd(HWND hwnd, UINT cmd) {
-    auto GetCurrentConfigPath = []() -> std::wstring {
+	BarInstance *bar = Railing::instance->FindBar(hwnd);
+    if (!bar) return;
+
+    auto GetCurrentConfigPath = [bar]() -> std::wstring {
         wchar_t exePath[MAX_PATH];
         GetModuleFileName(NULL, exePath, MAX_PATH);
         std::wstring path(exePath);
         path = path.substr(0, path.find_last_of(L"\\/"));
 
-        std::string cfg = Railing::instance->currentConfigName;
+        std::string cfg = bar->configFileName;
         std::wstring wCfg(cfg.begin(), cfg.end());
         return path + L"\\" + wCfg;
         };
@@ -98,8 +109,17 @@ void MainMenu::HandleMenuCmd(HWND hwnd, UINT cmd) {
     case CMD_LAYOUT_LOCK:
         break;
     case CMD_BAR_DUPLICATE:
-    case CMD_BAR_DELETE:
+        Railing::instance->CreateNewBar(bar->configFileName);
+        break;
+    case CMD_BAR_DELETE: {
+        int result = MessageBox(hwnd, L"Are you sure you want to close this bar?",
+            L"Remove Bar", MB_YESNO | MB_ICONWARNING | MB_TOPMOST);
+
+        if (result == IDYES) Railing::instance->DeleteBar(bar);
+        break;
+    }
     case CMD_BAR_NEW:
+        Railing::instance->CreateNewBar("config.json");
         break;
     case CMD_CONFIG_EDIT: {
         std::wstring configPath = GetCurrentConfigPath();
@@ -108,68 +128,79 @@ void MainMenu::HandleMenuCmd(HWND hwnd, UINT cmd) {
         break;
     }
     case CMD_CONFIG_LOAD: {
-        wchar_t szFile[MAX_PATH] = { 0 };
-        wchar_t currentDir[MAX_PATH] = { 0 };
+        std::thread([hwnd, bar]() {
+            HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            IFileOpenDialog *pFileOpen = nullptr;
 
-        GetModuleFileName(NULL, currentDir, MAX_PATH);
-        std::wstring path(currentDir);
-        wcsncpy_s(currentDir, path.c_str(), MAX_PATH);
+            if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void **>(&pFileOpen)))) {
+                COMDLG_FILTERSPEC rgSpec[] = { { L"JSON Config Files", L"*.json" }, { L"All Files", L"*.*" } };
+                pFileOpen->SetFileTypes(ARRAYSIZE(rgSpec), rgSpec);
 
-        OPENFILENAME ofn = { 0 };
-        ofn.lStructSize = sizeof(ofn);
-        ofn.hwndOwner = hwnd;
-        ofn.lpstrFile = szFile;
-        ofn.nMaxFile = sizeof(szFile);
-        ofn.lpstrFilter = L"JSON Config Files\0*.json\0AllFiles\0*.*\0";
-        ofn.nFilterIndex = 1;
-        ofn.lpstrFileTitle = NULL;
-        ofn.nMaxFileTitle = 0;
-        ofn.lpstrInitialDir = currentDir;
-        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+                wchar_t currentDir[MAX_PATH] = { 0 };
+                GetModuleFileNameW(NULL, currentDir, MAX_PATH);
+                std::filesystem::path exePath(currentDir);
+                std::filesystem::path exeDir = exePath.parent_path();
 
-        if (GetOpenFileName(&ofn) == TRUE) {
-            std::wstring fullPath(ofn.lpstrFile);
-            std::wstring filename;
-            if (fullPath.find(path) == 0) filename = fullPath.substr(path.length() + 1);
-            else {
-                size_t lastSlash = fullPath.find_last_of(L"\\/");
-                filename = (lastSlash != std::wstring::npos) ? fullPath.substr(lastSlash + 1) : fullPath;
+                IShellItem *pFolder = nullptr;
+                if (SUCCEEDED(SHCreateItemFromParsingName(exeDir.c_str(), NULL, IID_PPV_ARGS(&pFolder)))) {
+                    pFileOpen->SetDefaultFolder(pFolder);
+                    pFolder->Release();
+                }
+                if (SUCCEEDED(pFileOpen->Show(NULL))) {
+                    IShellItem *pItem;
+                    if (SUCCEEDED(pFileOpen->GetResult(&pItem))) {
+                        PWSTR pszFilePath;
+                        if (SUCCEEDED(pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath))) {
+                            std::filesystem::path selectedPath(pszFilePath);
+                            std::string finalPathStr;
+                            try {
+                                std::filesystem::path relative = std::filesystem::relative(selectedPath, exeDir);
+                                finalPathStr = relative.string(); // Auto-converts to UTF-8 in C++20, or system codepage in C++17
+                            }
+                            catch (...) {
+                                auto str = selectedPath.string();
+                                finalPathStr = str;
+                            }
+
+                            if (!finalPathStr.empty()) {
+                                bar->configFileName = finalPathStr;
+                                PostMessage(hwnd, WM_COMMAND, CMD_CONFIG_RELOAD, 0);
+                            }
+                            CoTaskMemFree(pszFilePath);
+                        }
+                        pItem->Release();
+                    }
+                }
+                pFileOpen->Release();
             }
-
-            int len = WideCharToMultiByte(CP_UTF8, 0, filename.c_str(), -1, NULL, 0, NULL, NULL);
-            std::string strFile(len, 0);
-            WideCharToMultiByte(CP_UTF8, 0, filename.c_str(), -1, &strFile[0], len, NULL, NULL);
-            strFile.pop_back();
-
-            Railing::instance->currentConfigName = strFile;
-            SendMessage(hwnd, WM_COMMAND, CMD_CONFIG_RELOAD, 0);
-        }
+            if (SUCCEEDED(hrInit)) CoUninitialize();
+            }).detach();
         break;
     }
     case CMD_CONFIG_RELOAD: {
-        const char *cfgName = Railing::instance->currentConfigName.c_str();
+        const char *cfgName = bar->configFileName.c_str();
 
-        Railing::instance->cachedConfig = ThemeLoader::Load(cfgName);
-        if (Railing::instance->renderer) {
-            Railing::instance->renderer->Reload(cfgName);
-            Railing::instance->renderer->Resize();
+        bar->config = ThemeLoader::Load(cfgName);
+        if (bar->renderer) {
+            bar->renderer->Reload(cfgName);
+            bar->renderer->Resize();
         }
 
         UnregisterAppBar(hwnd);
         RegisterAppBar(hwnd);
-        UpdateAppBarPosition(hwnd, Railing::instance->cachedConfig);
+        UpdateAppBarPosition(hwnd, bar->config);
         InvalidateRect(hwnd, NULL, FALSE);
         OutputDebugString(L"[Railing] Config Fully Reloaded.\n");
         break;
     }
     case CMD_CONFIG_RELOAD_MODULES: {
-        const char *cfgName = Railing::instance->currentConfigName.c_str();
+        const char *cfgName = bar->configFileName.c_str();
 
-        Railing::instance->cachedConfig = ThemeLoader::Load(cfgName);
-        if (Railing::instance->renderer)
-            Railing::instance->renderer->Reload(cfgName);
+        bar->config = ThemeLoader::Load(cfgName);
+        if (bar->renderer)
+            bar->renderer->Reload(cfgName);
 
-        Railing::instance->UpdateSystemStats();
+        Railing::instance->UpdateGlobalStats();
         InvalidateRect(hwnd, NULL, FALSE);
         OutputDebugString(L"[Railing] Modules Reloaded.\n");
         break;

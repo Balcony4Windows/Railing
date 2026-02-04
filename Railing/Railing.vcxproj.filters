@@ -161,13 +161,18 @@
     <ClInclude Include="Services\TrayBackend.h">
       <Filter>Services</Filter>
     </ClInclude>
-    <ClInclude Include="DockPreviewWindow.h">
+    <ClInclude Include="UI\DockPreviewWindow.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="IFlyout.h">
+    <ClInclude Include="UI\IFlyout.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="MainMenu.h" />
+    <ClInclude Include="App\BarInstance.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="UI\MainMenu.h">
+      <Filter>UI</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">
@@ -217,6 +222,11 @@
     <ClCompile Include="App\InputManager.cpp">
       <Filter>App</Filter>
     </ClCompile>
-    <ClCompile Include="MainMenu.cpp" />
+    <ClCompile Include="App\BarInstance.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="UI\MainMenu.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

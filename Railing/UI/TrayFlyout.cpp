@@ -43,8 +43,8 @@ ID2D1Bitmap *CreateBitmapFromIcon(ID2D1RenderTarget *rt, IWICImagingFactory *pWI
     return d2dBitmap;
 }
 
-TrayFlyout::TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config)
-    : pFactory(sharedFactory), pWICFactory(sharedWIC), tooltips(tooltips) {
+TrayFlyout::TrayFlyout(BarInstance *owner, HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config)
+    : ownerBar(owner), pFactory(sharedFactory), pWICFactory(sharedWIC), tooltips(tooltips) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     this->style = config.global;
     FlyoutManager::Get().Register(this);

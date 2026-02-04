@@ -4,6 +4,7 @@
 
 class MainMenu
 {
+public:
 	enum MenuCommand : UINT {
 		CMD_LAYOUT_TOP = 1000,
 		CMD_LAYOUT_BOTTOM,
@@ -31,7 +32,6 @@ class MainMenu
 
 		CMD_ABOUT = 1500
 	};
-public:
 	/// <summary>
 	/// Creates the context menu for the taskbar
 	/// </summary>

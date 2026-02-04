@@ -488,7 +488,7 @@ public:
             }
             else {
                 // Horizontal Bar indicator: Top or Bottom
-                bool onBottom = (config.position == "top");
+                bool onBottom = (config.position == "bottom");
                 float barY = onBottom ? (fixedCross + iconSize + 6) : (fixedCross - 6 - barThickness);
 
                 float barX = currentHighlightPos + (itemBoxStride / 2) - (barLength / 2);
@@ -548,7 +548,7 @@ public:
                 }
                 else {
                     // Horizontal: Dots on bottom/top
-                    bool onBottom = (config.position == "top");
+                    bool onBottom = (config.position == "bottom");
                     float dotY = onBottom ? (iconY + iconSize + 7.0f) : (iconY - 7.0f - dotSize);
                     float clusterStartX = iconX + (iconSize / 2.0f) - (totalDotsLen / 2.0f);
 

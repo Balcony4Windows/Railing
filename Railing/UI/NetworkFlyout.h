@@ -8,13 +8,16 @@
 
 #define WM_NET_SCAN_COMPLETE (WM_USER + 101)
 
+class BarInstance;
+
 class NetworkFlyout : IFlyout
 {
 public:
 	HWND hwnd = NULL;
+    BarInstance *ownerBar = nullptr;
     HINSTANCE hInst;
 
-    bool IsVisible() override { return (animState != AnimationState::Hidden); }
+    bool IsVisible() override { return (hwnd && IsWindowVisible(hwnd) && animState != AnimationState::Hidden); }
 
 	NetworkBackend backend;
 	std::vector<WifiNetwork> cachedNetworks;
@@ -93,7 +96,8 @@ public:
 
     float GetScale() { return (float)GetDpiForWindow(hwnd) / 96.0f; }
 
-    NetworkFlyout(HINSTANCE hInst,
+    NetworkFlyout(BarInstance *owner,
+        HINSTANCE hInst,
         ID2D1Factory *pFact,
         IDWriteFactory *pWFact,
         IDWriteTextFormat *pTxt,

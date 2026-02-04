@@ -19,117 +19,63 @@
 #include "AudioCapture.h"
 #include "NetworkFlyout.h"
 #include "MainMenu.h"
-
-class InputManager;
+#include "BarInstance.h"
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)
 #define CMD_SWITCH_WORKSPACE 1
 #define CMD_RELOAD_CONFIG 2
 
-class VolumeFlyout;
-class RailingRenderer;
+#define ANIMATION_TIMER_ID 200
 
-class Railing
-{
+class BarInstance;
+
+class Railing {
 public:
-	Railing();
-	~Railing();
-	static Railing *instance;
-	std::string currentConfigName = "config.json";
-	HWND hwndBar = nullptr;
-	HINSTANCE hInst = nullptr;
-	TooltipHandler tooltips;
-	ThemeConfig cachedConfig;
-	FILETIME lastConfigWriteTime = { 0 };
-	void CheckForConfigUpdate();
+    static Railing *instance;
 
-	std::unique_ptr<InputManager> inputManager;
-	IDropTarget *pDropTarget = nullptr;
+    // Bar management
+    std::vector<BarInstance *> bars;
+    BarInstance *primaryBar = nullptr;
 
-	bool Initialize(HINSTANCE hInstance);
-	void RunMessageLoop();
+    // Global resources
+    SystemStats stats;
+    GpuStats gpuStats;
+    AudioCapture visualizerBackend;
+    NetworkBackend networkBackend;
 
-	std::vector <WindowInfo> allWindows;
-	std::vector<std::wstring> pinnedApps;
+    // Cached global stats
+    int cachedCpuUsage = 0;
+    int cachedRamUsage = 0;
+    int cachedGpuTemp = 0;
+    float cachedVolume = 0.0f;
+    bool cachedMute = false;
+    int cachedWifiSignal = 0;
+    bool cachedWifiState = false;
 
-	RailingRenderer *renderer = nullptr;
-	VolumeFlyout *flyout = nullptr;
-	TrayFlyout *trayFlyout;
-	NetworkFlyout *networkFlyout;
-	WorkspaceManager workspaces;
-	AudioCapture visualizerBackend;
-	NetworkBackend networkBackend;
+    HINSTANCE hInst = nullptr;
 
-	float cachedVolume = 0.0f;
-	int cachedWifiSignal = 0;
-	bool cachedWifiState = false;
-	bool cachedMute = false;
+    Railing();
+    ~Railing();
 
-	void UpdateSystemStats();
-
-	static std::string ToUtf8(const std::wstring &wstr) {
-		if (wstr.empty()) return std::string();
-		int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
-		std::string strTo(size_needed, 0);
-		WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
-		return strTo;
-	}
+    bool Initialize(HINSTANCE hInstance);
+    void RunMessageLoop();
+    void CreateNewBar(const std::string &configName);
+    void DuplicateBar(BarInstance *source);
+	BarInstance *FindBar(HWND hwnd);
+    void DeleteBar(BarInstance *target);
+    void UpdateGlobalStats();
 
 private:
-	HWND CreateBarWindow(HINSTANCE hInstance, const ThemeConfig &config);
-	void DrawBar(HWND hwnd);
+    HWINEVENTHOOK titleHook = nullptr;
+    HWINEVENTHOOK focusHook = nullptr;
+    HWINEVENTHOOK windowLifecycleHook = nullptr;
 
-	static std::wstring GetWindowExePath(HWND hwnd) {
-		DWORD pid = 0;
-		GetWindowThreadProcessId(hwnd, &pid);
-		if (pid == 0) return L"";
+    ULONGLONG lastCpuUpdate = 0;
+    ULONGLONG lastRamUpdate = 0;
+    ULONGLONG lastGpuUpdate = 0;
 
-		HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-		if (!hProcess) return L"";
-
-		wchar_t path[MAX_PATH];
-		if (GetModuleFileNameExW(hProcess, NULL, path, MAX_PATH)) {
-			CloseHandle(hProcess);
-			return path;
-		}
-
-		CloseHandle(hProcess);
-		return L"";
-	}
-
-	bool needsWindowRefresh = true;
-
-	static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-	static void CALLBACK WinEventProc(
-		HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime);
-	inline ULONGLONG GetInterval(std::string type, int def);
-
-	HWINEVENTHOOK titleHook = nullptr;
-	HWINEVENTHOOK focusHook = nullptr;
-	HWINEVENTHOOK windowLifecycleHook = nullptr;
-	UINT shellMsgId = 0;
-	std::vector <WindowInfo> windows;
-
-	ULONGLONG lastCpuUpdate = 0;
-	ULONGLONG lastRamUpdate = 0;
-	ULONGLONG lastGpuUpdate = 0;
-	ULONGLONG lastNetUpdate = 0;
-	ULONGLONG lastClockUpdate = 0;
-
-	SystemStats stats;
-	GpuStats gpuStats;
-	int cachedGpuTemp = 0;
-	int cachedCpuUsage = 0;
-	int cachedRamUsage = 0;
-
-	bool isHidden = false;
-	bool isHoveringBar = false;
-	float showProgress = 1.0f;
-	ULONGLONG lastInteractionTime = 0;    
-	bool IsMouseAtEdge();
-
-	HWND hwndTooltip = nullptr;
-	std::wstring lastTooltipText = L"";
-	bool isTrackingMouse = false;
+    static void CALLBACK WinEventProc(HWINEVENTHOOK hook, DWORD event,
+        HWND hwnd, LONG idObject, LONG idChild,
+        DWORD dwEventThread, DWORD dwmsEventTime);
 };

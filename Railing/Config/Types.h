@@ -45,3 +45,13 @@ typedef struct _WINDOWCOMPOSITIONATTRIBDATA
 	PVOID pData;
 	ULONG ulDataSize;
 } WINDOWCOMPOSITIONATTRIBDATA;
+
+struct SystemStatusData {
+	int cpuUsage = 0;
+	int ramUsage = 0;
+	int gpuTemp = 0;
+	int wifiSignal = 0;
+	bool isWifiConnected = false;
+	bool isMuted = false;
+	float volume = 0.0f;
+};

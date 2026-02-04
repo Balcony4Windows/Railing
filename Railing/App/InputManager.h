@@ -12,7 +12,7 @@ class Railing;
 
 class InputManager
 {
-	Railing *app;
+	BarInstance *barInstance;
 	RailingRenderer *renderer;
 
 	bool isTrackingMouse = false;
@@ -20,7 +20,7 @@ class InputManager
 
 public:
 
-	InputManager(Railing *appInstance, RailingRenderer *rr, TooltipHandler *t);
+	InputManager(BarInstance *bar, RailingRenderer *rr, TooltipHandler *t);
 
 	void HandleMouseMove(HWND hwnd, int x, int y);
 	void HandleLeftClick(HWND hwnd, int x, int y);

@@ -8,6 +8,8 @@
 #include "ThemeTypes.h"
 #include "IFlyout.h"
 
+class BarInstance;
+
 struct AudioDeviceInfo {
     std::wstring name;
     std::wstring id;
@@ -15,17 +17,22 @@ struct AudioDeviceInfo {
 
 class VolumeFlyout : IFlyout {
 public:
-    VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config);
+
+    VolumeFlyout(
+        BarInstance *owner, HINSTANCE hInst,
+        ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory,
+        IDWriteTextFormat *pFormat, const ThemeConfig &config); 
     ~VolumeFlyout();
     AudioBackend audio;
     HWND hwnd = nullptr;
+	BarInstance *ownerBar;
 
     void Toggle(RECT iconRect); // Open/Close
     void Hide() override;
     enum class AnimationState { Hidden, Entering, Visible, Exiting };
     AnimationState animState = AnimationState::Hidden;
     bool IsVisible() override {
-        return (animState != AnimationState::Hidden);
+        return (hwnd && IsWindowVisible(hwnd) && animState != AnimationState::Hidden);
     }
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

@@ -13,13 +13,14 @@
 
 ULONGLONG NetworkFlyout::lastAutoCloseTime = 0;
 
-NetworkFlyout::NetworkFlyout(HINSTANCE hInst,
+NetworkFlyout::NetworkFlyout(BarInstance *owner,
+    HINSTANCE hInst,
     ID2D1Factory *pFact,
     IDWriteFactory *pWFact,
     IDWriteTextFormat *pTxt,
     IDWriteTextFormat *pIcon,
     ThemeConfig &theme)
-    : hInst(hInst), pFactory(pFact), pWriteFactory(pWFact), pTextFormat(pTxt), pIconFormat(pIcon), theme(theme)
+    : ownerBar(owner), hInst(hInst), pFactory(pFact), pWriteFactory(pWFact), pTextFormat(pTxt), pIconFormat(pIcon), theme(theme)
 {
 	FlyoutManager::Get().Register(this);
     WNDCLASS wc = {};
@@ -859,12 +860,12 @@ void NetworkFlyout::OnClick(int x, int y) {
                             if (result == L"Connected!") {
                                 statusColor = D2D1::ColorF(0.3f, 1.0f, 0.3f, 1.0f);
 
-                                if (Railing::instance && Railing::instance->hwndBar) {
-                                    SendMessage(Railing::instance->hwndBar, WM_USER + 999, 0, 0);
+                                if (ownerBar && IsWindow(ownerBar->hwnd)) {
+                                    SendMessage(ownerBar->hwnd, WM_USER + 999, 0, 0);
                                 }
                             }
                             else statusColor = D2D1::ColorF(1.0f, 0.3f, 0.3f, 1.0f);
-                            isWorking = false;
+                                    isWorking = false;
                         }
                         if (IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
                         }).detach();

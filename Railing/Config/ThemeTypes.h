@@ -136,5 +136,5 @@ struct ThemeConfig {
     } layout;
 
     std::map<std::string, ModuleConfig> modules;
-    std::vector<std::wstring> pinnedPaths;
+	std::vector<std::wstring> pinnedPaths;
 };

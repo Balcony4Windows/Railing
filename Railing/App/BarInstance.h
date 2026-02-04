@@ -1,32 +1,62 @@
 #pragma once
-#include <RailingRenderer.h>
-class BarInstance
-{
+#include <Windows.h>
+#include <string>
+#include <memory>
+#include <dwmapi.h>
+#include "ThemeLoader.h"
+#include "TooltipHandler.h"
+#include "WorkspaceManager.h"
+#include "Types.h"
+
+class RailingRenderer;
+class InputManager;
+class VolumeFlyout;
+class TrayFlyout;
+class NetworkFlyout;
+class IDropTarget;
+
+class BarInstance {
 public:
-	HWND hwnd = NULL;
-	ThemeConfig config;
-	std::string configFileName;
+    BarInstance(const std::string &configFile);
+    ~BarInstance();
 
-	RailingRenderer *renderer = nullptr;
-	std::unique_ptr<InputManager> inputManager;
+    bool Initialize(HINSTANCE hInstance, bool makePrimary = false);
+    void Reposition();
+    void ReloadConfig();
+    void UpdateStats(const SystemStatusData &stats);
 
-	TooltipHandler tooltips;
-	WorkspaceManager workspaces;
+    HWND GetHwnd() const { return hwnd; }
+    bool IsPrimary() const { return isPrimary; }
 
-	bool isHidden = false;
-	float showProgress = 0.0f;
-	ULONGLONG lastInteractionTime = 0;
+    WorkspaceManager workspaces;
 
-	BarInstance(const std::string &configFile);
-	~BarInstance();
+    // Flyouts
+    VolumeFlyout *flyout = nullptr;
+    TrayFlyout *trayFlyout = nullptr;
+    NetworkFlyout *networkFlyout = nullptr;
 
-	void Initialize(HINSTANCE hInstance);
-	void ReloadConfig();
-	void UpdateStats(const RailingRenderer::SystemStatusData &stats);
-	
-	static LRESULT CALLBACK BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    std::string configFileName;
+    ThemeConfig config;
 
-	void OnPaint();
-	void OnTimer(UINT_PTR id);
+    HWND hwnd = nullptr;
+    bool isPrimary = false;
+
+    RailingRenderer *renderer = nullptr;
+    std::unique_ptr<InputManager> inputManager;
+    TooltipHandler tooltips;
+
+    // Auto-hide state
+    float showProgress = 1.0f;
+    bool isHidden = false;
+    ULONGLONG lastInteractionTime = 0;
+
+    IDropTarget *pDropTarget = nullptr;
+
+    HWND CreateBarWindow(HINSTANCE hInstance, bool makePrimary);
+    void OnTimerTick();
+    bool IsMouseAtEdge();
+
+    static LRESULT CALLBACK BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+    friend class Railing;
 };
-

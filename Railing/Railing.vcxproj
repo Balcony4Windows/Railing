@@ -159,12 +159,13 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClInclude Include="App\Railing.h" />
     <ClInclude Include="App\WindowManager.h" />
     <ClInclude Include="App\WorkspaceManager.h" />
+    <ClInclude Include="App\BarInstance.h" />
     <ClInclude Include="Config\ThemeLoader.h" />
     <ClInclude Include="Config\ThemeTypes.h" />
     <ClInclude Include="Config\Types.h" />
-    <ClInclude Include="DockPreviewWindow.h" />
-    <ClInclude Include="IFlyout.h" />
-    <ClInclude Include="MainMenu.h" />
+    <ClInclude Include="UI\DockPreviewWindow.h" />
+    <ClInclude Include="UI\IFlyout.h" />
+    <ClInclude Include="UI\MainMenu.h" />
     <ClInclude Include="Services\DropTarget.h" />
     <ClInclude Include="External\nlohmann\json.hpp" />
     <ClInclude Include="App\InputManager.h" />
@@ -211,7 +212,8 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     <ClCompile Include="App\Railing.cpp" />
     <ClCompile Include="App\WindowManager.cpp" />
     <ClCompile Include="App\InputManager.cpp" />
-    <ClCompile Include="MainMenu.cpp" />
+    <ClCompile Include="App\BarInstance.cpp" />
+    <ClCompile Include="UI\MainMenu.cpp" />
     <ClCompile Include="Modules\Base\Module.cpp" />
     <ClCompile Include="Renderer\RailingRenderer.cpp" />
     <ClCompile Include="Services\CommandExecutor.cpp" />

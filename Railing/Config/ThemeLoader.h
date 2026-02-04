@@ -8,132 +8,221 @@
 class ThemeLoader
 {
 public:
-	static ThemeConfig Load(const std::string &relativeFilename)
-	{
-		ThemeConfig config;
-		wchar_t exePath[MAX_PATH];
-		GetModuleFileNameW(NULL, exePath, MAX_PATH);
-		std::wstring path(exePath);
-		path = path.substr(0, path.find_last_of(L"\\/"));
-		std::wstring wFilename(relativeFilename.begin(), relativeFilename.end());
-		std::wstring fullPath = path + L"\\" + wFilename;
-		std::string finalPath(fullPath.begin(), fullPath.end());
+	static ThemeConfig CreateDefaultConfig() {
+		ThemeConfig c;
+		c.global.height = 45;
+		c.global.position = "bottom";
+		c.global.background = D2D1::ColorF(0.1f, 0.1f, 0.1f, 0.95f);
+		c.global.font = "Segoe UI";
+		c.global.fontSize = 14.0f;
+		c.global.margin = { 0,0,0,0 };
+		c.global.radius = 0.0f;
 
-		char debugBuf[512];
-		sprintf_s(debugBuf, "Loading Config from: %s\n", finalPath.c_str());
-		OutputDebugStringA(debugBuf);
-		std::ifstream f(fullPath);
-		if (!f.is_open()) {
-			OutputDebugStringA("ERROR: File not found.\n");
-			return config;
-		}
+		// Add a default clock so the user knows it's working
+		ModuleConfig clock;
+		clock.id = "default_clock";
+		clock.type = "clock";
+		clock.format = "%I:%M %p";
+		clock.baseStyle.padding = { 10,0,10,0 };
+		c.modules["default_clock"] = clock;
+		c.layout.right.push_back("default_clock");
 
-		nlohmann::json j;
-		try {
-			f >> j;
-		}
-		catch (nlohmann::json::parse_error &e) {
-			char buf[512];
-			sprintf_s(buf, "ERROR: JSON Parse Error: %s\n", e.what());
-			OutputDebugStringA(buf);
-			return config; // Return empty
-		}
-
-		if (j.contains("global")) {
-			auto &g = j["global"];
-			config.global.height = g.value("height", 40);
-			config.global.position = g.value("position", "top");
-			config.global.monitor = g.value("monitor", "primary");
-			config.global.font = g.value("font", "Segoe UI");
-			config.global.fontSize = g.value("font_size", 14.0f);
-			config.global.blur = g.value("blur", true);
-			config.global.highlights = ParseColor(g.value("highlights", "#FF6495ED"));
-			config.global.autoHide = g.value("auto_hide", false);
-			config.global.autoHideDelay = g.value("hide_delay", 500);
-
-			if (g.contains("animation")) {
-				auto &a = g["animation"];
-				config.global.animation.enabled = a.value("enabled", true);
-				config.global.animation.duration = a.value("duration", 300);
-				config.global.animation.startScale = a.value("start_scale", 0.1f);
-				config.global.animation.fps = a.value("fps", 60);
-			}
-			if (g.contains("style")) {
-				Style s = ParseStyle(g["style"]);
-				if (s.has_bg) config.global.background = s.bg;
-				if (s.has_radius) config.global.radius = s.radius;
-				if (s.has_margin) config.global.margin = s.margin;
-				if (s.has_border) {
-					config.global.borderWidth = s.borderWidth;
-					config.global.borderColor = s.borderColor;
-				}
-			}
-		}
-		if (j.contains("layout")) {
-			auto &l = j["layout"];
-			if (l.contains("left")) config.layout.left = l["left"].get<std::vector<std::string>>();
-			if (l.contains("center")) config.layout.center = l["center"].get<std::vector<std::string>>();
-			if (l.contains("right")) config.layout.right = l["right"].get<std::vector<std::string>>();
-		}
-
-		for (auto &[key, val] : j.items()) {
-			if (key == "global" || key == "layout" || key == "pinned") continue;
-
-			ModuleConfig mod;
-			mod.id = key;
-			mod.type = val.value("type", "custom");
-			mod.format = val.value("format", "");
-			mod.interval = val.value("interval", 0);
-			mod.position = val.value("position", config.global.position);
-			mod.latitude = val.value("latitude", "");
-			mod.longitude = val.value("longitude", "");
-			mod.tempFormat = val.value("temp_format", "fahrenheit");
-			mod.tooltip = val.value("tooltip", "");
-			mod.baseStyle = Style();
-			if (val.contains("target")) mod.target = val["target"].get<std::string>();
-			if (val.contains("on_click")) mod.onClick = val["on_click"].get<std::string>();
-			if (val.contains("style")) {
-				auto &s = val["style"];
-				mod.baseStyle = ParseStyle(s);
-				mod.dockIconSize = s.value("icon_size", 24.0f);
-				mod.dockSpacing = s.value("spacing", 8.0f);
-				mod.dockAnimSpeed = s.value("anim_speed", 0.25f);
-			}
-			if (val.contains("item_style")) mod.itemStyle = ParseStyle(val["item_style"]);
-			if (val.contains("modules")) mod.groupModules = val["modules"].get<std::vector<std::string>>();
-			if (val.contains("icon")) mod.icon = val["icon"].get<std::string>();
-			if (val.contains("thresholds")) {
-				for (auto &t : val["thresholds"]) {
-					Threshold th;
-					th.val = t.value("val", 0);
-					if (t.contains("style")) th.style = ParseStyle(t["style"]);
-					mod.thresholds.push_back(th);
-				}
-			}
-			if (val.contains("states")) {
-				for (auto &[stateName, stateStyle] : val["states"].items()) mod.states[stateName] = ParseStyle(stateStyle);
-			}
-			if (val.contains("visualizer")) {
-					auto &v = val["visualizer"];
-					if (v.contains("bars")) mod.viz.numBars = v["bars"].get<int>();
-					if (v.contains("sensitivity")) mod.viz.sensitivity = v["sensitivity"].get<float>();
-					if (v.contains("decay")) mod.viz.decay = v["decay"].get<float>();
-					if (v.contains("offset")) mod.viz.offset = v["offset"].get<int>();
-					if (v.contains("spacing")) mod.viz.spacing = v["spacing"].get<float>();
-					if (v.contains("thickness")) mod.viz.thickness = v["thickness"].get<float>();
-			}
-
-			config.modules[key] = mod;
-		}
-
-		if (j.contains("pinned") && j["pinned"].is_array()) {
-			for (auto &p : j["pinned"]) {
-				std::string pathStr = p.get<std::string>();
-				config.pinnedPaths.push_back(std::wstring(pathStr.begin(), pathStr.end()));
-			}
-		}
-		return config;
+		return c;
 	}
+
+    static ThemeConfig Load(const std::string &filename)
+    {
+        // 1. Start with a guaranteed valid state
+        ThemeConfig config = CreateDefaultConfig();
+
+        // 2. Resolve Path Robustly (Fixes the C:/User/.../C:/User crash)
+        std::filesystem::path inputPath(filename);
+        std::filesystem::path finalPath;
+
+        try {
+            if (inputPath.is_absolute()) {
+                finalPath = inputPath;
+            }
+            else {
+                wchar_t exePath[MAX_PATH];
+                GetModuleFileNameW(NULL, exePath, MAX_PATH);
+                std::filesystem::path exeDir = std::filesystem::path(exePath).parent_path();
+                finalPath = exeDir / inputPath;
+            }
+
+            // Debug Output
+            std::string pathStr = finalPath.string();
+            char debugBuf[512];
+            sprintf_s(debugBuf, "[Railing] Loading Config: %s\n", pathStr.c_str());
+            OutputDebugStringA(debugBuf);
+
+            if (!std::filesystem::exists(finalPath)) {
+                OutputDebugStringA("[Railing] ERROR: Config file not found. Using defaults.\n");
+                return config; // Return the safe default we created earlier
+            }
+
+            std::ifstream f(finalPath);
+            nlohmann::json j;
+            f >> j;
+
+            // --- Parsing Global ---
+            if (j.contains("global")) {
+                auto &g = j["global"];
+                // .value() is safe - it handles missing keys or wrong types by returning the default
+                config.global.height = g.value("height", 40);
+                config.global.position = g.value("position", "bottom");
+                config.global.monitor = g.value("monitor", "primary");
+                config.global.font = g.value("font", "Segoe UI");
+                config.global.fontSize = g.value("font_size", 14.0f);
+                config.global.blur = g.value("blur", true);
+                config.global.highlights = ParseColor(g.value("highlights", "#FF6495ED"));
+                config.global.autoHide = g.value("auto_hide", false);
+                config.global.autoHideDelay = g.value("hide_delay", 500);
+
+                if (g.contains("animation")) {
+                    auto &a = g["animation"];
+                    config.global.animation.enabled = a.value("enabled", true);
+                    config.global.animation.duration = a.value("duration", 300);
+                    config.global.animation.startScale = a.value("start_scale", 0.1f);
+                    config.global.animation.fps = a.value("fps", 60);
+                }
+                if (g.contains("style")) {
+                    Style s = ParseStyle(g["style"]);
+                    if (s.has_bg) config.global.background = s.bg;
+                    if (s.has_radius) config.global.radius = s.radius;
+                    if (s.has_margin) config.global.margin = s.margin;
+                    if (s.has_border) {
+                        config.global.borderWidth = s.borderWidth;
+                        config.global.borderColor = s.borderColor;
+                    }
+                }
+            }
+
+            // --- Parsing Layout ---
+            // Clear default layout if we found a new one
+            if (j.contains("layout")) {
+                config.layout.left.clear();
+                config.layout.center.clear();
+                config.layout.right.clear();
+
+                auto &l = j["layout"];
+                if (l.contains("left") && l["left"].is_array())
+                    config.layout.left = l["left"].get<std::vector<std::string>>();
+
+                if (l.contains("center") && l["center"].is_array())
+                    config.layout.center = l["center"].get<std::vector<std::string>>();
+
+                if (l.contains("right") && l["right"].is_array())
+                    config.layout.right = l["right"].get<std::vector<std::string>>();
+            }
+
+            // --- Parsing Modules ---
+            // Clear default modules if we have new ones to load
+            bool hasModules = false;
+
+            for (auto &[key, val] : j.items()) {
+                if (key == "global" || key == "layout" || key == "pinned") continue;
+
+                if (!hasModules) {
+                    config.modules.clear(); // Only clear defaults if we actually found a module definition
+                    hasModules = true;
+                }
+
+                ModuleConfig mod;
+                mod.id = key;
+                mod.type = val.value("type", "custom");
+                mod.format = val.value("format", "");
+                mod.interval = val.value("interval", 1000);
+                mod.position = val.value("position", config.global.position); // inherit global pos
+                mod.latitude = val.value("latitude", "");
+                mod.longitude = val.value("longitude", "");
+                mod.tempFormat = val.value("temp_format", "fahrenheit");
+                mod.tooltip = val.value("tooltip", "");
+
+                if (val.contains("target") && val["target"].is_string())
+                    mod.target = val.value("target", "");
+
+                if (val.contains("on_click") && val["on_click"].is_string())
+                    mod.onClick = val.value("on_click", "");
+
+                // Dock Specifics
+                if (val.contains("style")) {
+                    auto &s = val["style"];
+                    mod.baseStyle = ParseStyle(s);
+                    mod.dockIconSize = s.value("icon_size", 24.0f);
+                    mod.dockSpacing = s.value("spacing", 8.0f);
+                    mod.dockAnimSpeed = s.value("anim_speed", 0.25f);
+                }
+
+                if (val.contains("item_style"))
+                    mod.itemStyle = ParseStyle(val["item_style"]);
+
+                if (val.contains("modules") && val["modules"].is_array())
+                    mod.groupModules = val["modules"].get<std::vector<std::string>>();
+
+                if (val.contains("icon") && val["icon"].is_string())
+                    mod.icon = val.value("icon", "");
+
+                if (val.contains("thresholds") && val["thresholds"].is_array()) {
+                    for (auto &t : val["thresholds"]) {
+                        Threshold th;
+                        th.val = t.value("val", 0);
+                        if (t.contains("style")) th.style = ParseStyle(t["style"]);
+                        mod.thresholds.push_back(th);
+                    }
+                }
+
+                if (val.contains("states") && val["states"].is_object()) {
+                    for (auto &[stateName, stateStyle] : val["states"].items()) {
+                        mod.states[stateName] = ParseStyle(stateStyle);
+                    }
+                }
+
+                // Visualizer
+                if (val.contains("visualizer")) {
+                    auto &v = val["visualizer"];
+                    mod.viz.numBars = v.value("bars", 20);
+                    mod.viz.sensitivity = v.value("sensitivity", 2.0f);
+                    mod.viz.decay = v.value("decay", 0.85f);
+                    mod.viz.offset = v.value("offset", 0);
+                    mod.viz.spacing = v.value("spacing", 2.0f);
+                    mod.viz.thickness = v.value("thickness", 3.0f);
+                }
+
+                config.modules[key] = mod;
+            }
+
+            // --- Parsing Pinned Apps ---
+            if (j.contains("pinned") && j["pinned"].is_array()) {
+                config.pinnedPaths.clear();
+                for (auto &p : j["pinned"]) {
+                    if (p.is_string()) {
+                        std::string pathStr = p.get<std::string>();
+                        config.pinnedPaths.push_back(std::wstring(pathStr.begin(), pathStr.end()));
+                    }
+                }
+            }
+
+        }
+        catch (const nlohmann::json::exception &e) {
+            char buf[512];
+            sprintf_s(buf, "[Railing] JSON Error: %s. Using default config.\n", e.what());
+            OutputDebugStringA(buf);
+            return CreateDefaultConfig(); // Fallback on parse error
+        }
+        catch (const std::exception &e) {
+            char buf[512];
+            sprintf_s(buf, "[Railing] General Error loading config: %s\n", e.what());
+            OutputDebugStringA(buf);
+            return CreateDefaultConfig(); // Fallback on general error
+        }
+        catch (...) {
+            OutputDebugStringA("[Railing] Unknown error loading config.\n");
+            return CreateDefaultConfig();
+        }
+
+        return config;
+    }
 
 private:
 	static D2D1_COLOR_F ParseColor(std::string hex)

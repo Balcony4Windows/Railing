@@ -6,8 +6,8 @@
 #include "Railing.h"
 #include <cstdlib>
 
-InputManager::InputManager(Railing *a, RailingRenderer *rr, TooltipHandler *t)
-    : app(a), renderer(rr), tooltips(t) {
+InputManager::InputManager(BarInstance *bar, RailingRenderer *rr, TooltipHandler *t)
+    : barInstance(bar), renderer(rr), tooltips(t) {
 }
 
 void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
@@ -19,7 +19,7 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
         TrackMouseEvent(&tme);
         isTrackingMouse = true;
     }
-    float dpi = (float)GetDpiForWindow(app->hwndBar);
+    float dpi = (float)GetDpiForWindow(barInstance->GetHwnd());
     float scale = dpi / 96.0f;
     D2D1_RECT_F rectF;
     Module *hitModule = HitTest(x, y, rectF);
@@ -302,13 +302,13 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
                                 return;
                             }
                         }
-                        if (app->workspaces.managedWindows.count(target)) {
-                            int wksp = app->workspaces.managedWindows[target];
-                            if (wksp != app->workspaces.currentWorkspace) {
-                                app->workspaces.SwitchWorkspace(wksp);
+                        if (barInstance->workspaces.managedWindows.count(target)) {
+                            int wksp = barInstance->workspaces.managedWindows[target];
+                            if (wksp != barInstance->workspaces.currentWorkspace) {
+                                barInstance->workspaces.SwitchWorkspace(wksp);
                                 Module *wsMod = renderer->GetModule("workspaces");
                                 if (wsMod) ((WorkspacesModule *)wsMod)->SetActiveIndex(wksp);
-                                WindowMonitor::GetTopLevelWindows(app->allWindows, app->pinnedApps, app->hwndBar);
+								InvalidateRect(hwnd, NULL, FALSE);
                             }
                         }
                         if (IsIconic(target)) ShowWindow(target, SW_RESTORE);
@@ -335,22 +335,25 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
             index = (int)(localX / fullItemSize);
         }
         if (index >= 0 && index < ws->count) {
-            app->workspaces.SwitchWorkspace(index);
+            barInstance->workspaces.SwitchWorkspace(index);
             ws->SetActiveIndex(index);
-            WindowMonitor::GetTopLevelWindows(app->allWindows, app->pinnedApps, app->hwndBar);
             InvalidateRect(hwnd, NULL, FALSE);
         }
     }
     else if (type == "audio") {
-        if (app->flyout) { RECT r = GetScreenRect(rectF); app->flyout->Toggle(r); }
+        if (barInstance->flyout) { RECT r = GetScreenRect(rectF); barInstance->flyout->Toggle(r); }
     }
     else if (type == "network") {
-        if (!app->networkFlyout) app->networkFlyout = new NetworkFlyout(app->hInst, renderer->GetFactory(), renderer->GetWriteFactory(), renderer->GetTextFormat(), renderer->GetIconFormat(), renderer->theme);
-        RECT r = GetScreenRect(rectF); app->networkFlyout->Toggle(r);
+        if (barInstance->networkFlyout) {
+            RECT r = GetScreenRect(rectF);
+            barInstance->networkFlyout->Toggle(r);
+        }
     }
     else if (type == "tray") {
-        if (!app->trayFlyout) app->trayFlyout = new TrayFlyout(app->hInst, renderer->GetFactory(), renderer->GetWICFactory(), tooltips, renderer->theme);
-        RECT r = GetScreenRect(rectF); app->trayFlyout->Toggle(r);
+        if (barInstance->trayFlyout) {
+            RECT r = GetScreenRect(rectF);
+            barInstance->trayFlyout->Toggle(r);
+        }
     }
     else if (type == "battery") { ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL); }
     else if (type == "app_icon") { SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0); }
@@ -362,10 +365,13 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
 }
 
 void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
+    POINT screenPt = { x, y };
+    ClientToScreen(hwnd, &screenPt);
     D2D1_RECT_F rectF;
     Module *m = HitTest(x, y, rectF);
+
     if (!m || m->config.type != "dock") {
-        MainMenu::Show(hwnd, {x, y});
+        MainMenu::Show(hwnd, screenPt);
         return;
     }
     DockModule *dock = (DockModule *)m;
@@ -413,10 +419,8 @@ void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
                     AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                     AppendMenuW(hMenu, MF_STRING, 102, L"Close");
                 }
-                POINT pt = { x, y };
-                ClientToScreen(hwnd, &pt);
                 SetForegroundWindow(hwnd);
-                int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, pt.x, pt.y, 0, hwnd, NULL);
+                int cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD | TPM_NONOTIFY, screenPt.x, screenPt.y, 0, hwnd, NULL);
                 DestroyMenu(hMenu);
                 if (cmd == 100) {
                     std::wstring path = targetWin.exePath;
@@ -430,7 +434,6 @@ void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
                         if (dock->IsPinned(path)) dock->UnpinApp(path);
                         else dock->PinApp(path);
                     }
-                    WindowMonitor::GetTopLevelWindows(app->allWindows, app->pinnedApps, app->hwndBar);
                     InvalidateRect(hwnd, NULL, FALSE);
                 }
                 else if (cmd == 102) {
@@ -446,16 +449,15 @@ void InputManager::HandleScroll(HWND hwnd, short delta) {
         Module *m = renderer->GetModule("workspaces");
         if (m) {
             WorkspacesModule *ws = (WorkspacesModule *)m;
-            int current = app->workspaces.currentWorkspace;
+            int current = barInstance->workspaces.currentWorkspace;
             int count = ws->count;
             int next = current;
             if (delta > 0) next--; else next++;
             if (next < 0) next = count - 1;
             if (next >= count) next = 0;
             if (next != current) {
-                app->workspaces.SwitchWorkspace(next);
+                barInstance->workspaces.SwitchWorkspace(next);
                 ws->SetActiveIndex(next);
-                WindowMonitor::GetTopLevelWindows(app->allWindows, app->pinnedApps, app->hwndBar);
                 InvalidateRect(hwnd, NULL, FALSE);
             }
         }
@@ -553,7 +555,7 @@ void InputManager::OnMouseLeave(HWND hwnd) {
 
 Module *InputManager::HitTest(int x, int y, D2D1_RECT_F &outRect) {
     if (!renderer) return nullptr;
-    float dpi = (float)GetDpiForWindow(app->hwndBar);
+    float dpi = (float)GetDpiForWindow(barInstance->GetHwnd());
     float scale = dpi / 96.0f;
     POINT pt = { x, y };
 

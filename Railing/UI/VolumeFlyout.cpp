@@ -1,4 +1,5 @@
 #include "VolumeFlyout.h"
+#include "BarInstance.h"
 #include <windowsx.h>
 #include "RailingRenderer.h"
 #include <dwmapi.h>
@@ -17,8 +18,9 @@ const float LOGICAL_FULL_HEIGHT = 340.0f;
 ULONGLONG VolumeFlyout::lastAutoCloseTime = 0;
 ULONGLONG VolumeFlyout::lastAnimTime = 0;
 
-VolumeFlyout::VolumeFlyout(HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config)
-    : hInst(hInst), pFactory(pSharedFactory), pWriteFactory(pSharedWriteFactory), pTextFormat(pFormat)
+VolumeFlyout::VolumeFlyout(BarInstance *owner, HINSTANCE hInst, ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory, IDWriteTextFormat *pFormat, const ThemeConfig &config)
+    : ownerBar(owner),
+    hInst(hInst), pFactory(pSharedFactory), pWriteFactory(pSharedWriteFactory), pTextFormat(pFormat)
 {
 	FlyoutManager::Get().Register(this);
     this->style = config.global;
@@ -271,15 +273,17 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             break;
         }
         case WM_RAILING_AUDIO_UPDATE:
-            if (Railing::instance && Railing::instance->renderer) {
+            if (self->ownerBar && self->ownerBar->renderer) {
                 float vol = (float)wParam / 100.0f;
                 bool mute = (bool)lParam;
 
-                Railing::instance->renderer->UpdateAudioStats(vol, mute);
-                Railing::instance->cachedVolume = vol;
-                Railing::instance->cachedMute = mute;
+                self->ownerBar->renderer->UpdateAudioStats(vol, mute);
+                if (Railing::instance) {
+                    Railing::instance->cachedVolume = vol;
+                    Railing::instance->cachedMute = mute;
+                }
 
-                InvalidateRect(Railing::instance->hwndBar, NULL, FALSE);
+                InvalidateRect(self->ownerBar->hwnd, NULL, FALSE);
             }
             return 0;
         case WM_ACTIVATE:
@@ -301,14 +305,9 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             if (self->pAccentBrush) { self->pAccentBrush->Release();  self->pAccentBrush = nullptr; }
             if (self->pFgBrush) { self->pFgBrush->Release();      self->pFgBrush = nullptr; }
             if (self->pBorderBrush) { self->pBorderBrush->Release();  self->pBorderBrush = nullptr; }
-            self->hwnd = nullptr; // Mark as closed
-            if (Railing::instance && Railing::instance->flyout == self) {
-                Railing::instance->flyout = nullptr;
-            }
+            self->hwnd = nullptr; // Mark as closed locally
             return 0;
         case WM_NCDESTROY:
-            // FINAL CLEANUP: Delete the C++ Object
-            delete self;
             return 0;
         }
     }

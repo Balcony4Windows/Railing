@@ -8,12 +8,16 @@
 #include "TrayBackend.h"
 #include "IFlyout.h"
 
+class BarInstance;
+
 class TrayFlyout : IFlyout {
 public:
-    TrayFlyout(HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config);
+    TrayFlyout(BarInstance *owner, HINSTANCE hInst, ID2D1Factory *sharedFactory, IWICImagingFactory *sharedWIC, TooltipHandler *tooltips, const ThemeConfig &config);
     ~TrayFlyout();
 
     HWND hwnd = nullptr;
+	BarInstance *ownerBar = nullptr;
+
     void Toggle(RECT iconRect);
     void Hide() override;
     void Draw();
