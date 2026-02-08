@@ -4,6 +4,7 @@
 
 class CommandExecutor {
 public:
+    static void SafetyTest(HINSTANCE hInst);
     static void Execute(const std::string &command, HWND hwndBar);
 private:
     static void SendWinKey(char key);

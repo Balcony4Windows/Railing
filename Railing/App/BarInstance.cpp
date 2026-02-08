@@ -4,9 +4,13 @@
 #include "InputManager.h"
 #include <windowsx.h>
 #include <VolumeFlyout.h>
+#include <AppBarManager.h>
+#include <wchar.h>
+#define STATS_TIMER_ID 1
 
 UINT WM_SHELLHOOKMESSAGE = RegisterWindowMessageW(L"SHELLHOOK");
 UINT WM_TASKBARCREATED = RegisterWindowMessageW(L"TaskbarCreated");
+UINT WM_APPBAR_CALL = RegisterWindowMessageW(L"AppBarMessage");
 
 BarInstance::BarInstance(const std::string &configFile) : configFileName(configFile)
 {
@@ -14,8 +18,14 @@ BarInstance::BarInstance(const std::string &configFile) : configFileName(configF
 }
 BarInstance::~BarInstance() {
     if (hwnd) {
-        KillTimer(hwnd, 1); // Kill stats timer
+        KillTimer(hwnd, STATS_TIMER_ID); // Kill stats timer
         KillTimer(hwnd, ANIMATION_TIMER_ID); // Kill anim timer
+        UnregisterHotKey(hwnd, 900);
+        if (isPrimary) {
+            for (int i = 0; i < 5; i++) UnregisterHotKey(hwnd, 100 + i);
+            UnregisterHotKey(hwnd, HOTKEY_KILL_THIS);
+            UnregisterAppBar(hwnd);
+        }
         DestroyWindow(hwnd);
     }
 
@@ -35,7 +45,10 @@ BarInstance::~BarInstance() {
         delete networkFlyout;
         networkFlyout = nullptr;
     }
-
+    if (pDropTarget) {
+        pDropTarget->Release();
+        pDropTarget = nullptr;
+    }
     // Note: inputManager is a std::unique_ptr, it cleans itself up.
 }
 
@@ -44,9 +57,12 @@ bool BarInstance::Initialize(HINSTANCE hInstance, bool makePrimary) {
 
     hwnd = CreateBarWindow(hInstance, makePrimary);
     if (!hwnd) return false;
+    if (isPrimary) {
+		RegisterAppBar(hwnd);
+		UpdateAppBarPosition(hwnd, config);
+    }
     RegisterHotKey(hwnd, 900, MOD_CONTROL | MOD_SHIFT, 0x51);
     if (makePrimary) {
-        RegisterAppBar(hwnd);
         RegisterShellHookWindow(hwnd);
 
         // --- FIX: Restore ALL Message Filters from Old Railing.cpp ---
@@ -62,8 +78,6 @@ bool BarInstance::Initialize(HINSTANCE hInstance, bool makePrimary) {
         for (int i = 0; i < 5; i++) RegisterHotKey(hwnd, 100 + i, MOD_ALT | MOD_NOREPEAT, 0x31 + i);
         RegisterHotKey(hwnd, HOTKEY_KILL_THIS, MOD_CONTROL | MOD_SHIFT, 0x51);
     }
-
-    Reposition();
 
     renderer = new RailingRenderer(hwnd, config);
     renderer->pWorkspaceManager = &workspaces;
@@ -118,8 +132,8 @@ bool BarInstance::Initialize(HINSTANCE hInstance, bool makePrimary) {
     }
 
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-    ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-    SetTimer(hwnd, 1, 1000, NULL);
+    UpdateWindow(hwnd);
+    SetTimer(hwnd, STATS_TIMER_ID, 1000, NULL);
     SetTimer(hwnd, ANIMATION_TIMER_ID, 16, NULL);
 
     return true;
@@ -131,34 +145,43 @@ HWND BarInstance::CreateBarWindow(HINSTANCE hInstance, bool makePrimary) {
 	WNDCLASSEX wc = {sizeof(WNDCLASSEX)};
 	wc.lpfnWndProc = BarWndProc;
 	wc.hInstance = hInstance;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
 	wc.lpszClassName = className;
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
 	wc.style = CS_DBLCLKS | CS_HREDRAW | CS_VREDRAW;
-	RegisterClassEx(&wc);
+	ATOM atom = RegisterClassEx(&wc);
+    if (atom == 0) {
+        DWORD err = GetLastError();
+        if (err == ERROR_CLASS_ALREADY_EXISTS);
+        else /* TODO */;
+    }
+    else {
+        int x = 0, y = 0, w = 800, h = 50;
+        HWND hBar = CreateWindowEx(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+            className, L"Railing",
+            WS_POPUP, x, y, w, h,
+            nullptr, nullptr, hInstance, this);
+        if (!hBar) return NULL;
 
-	int x = 0, y = 0, w = 800, h = 50;
-	HWND hBar = CreateWindowEx(
-		WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-		className, L"Railing",
-		WS_POPUP, x, y, w, h,
-		nullptr, nullptr, hInstance, this);
-	if (!hBar) return NULL;
+        if (makePrimary) {
+            WNDCLASSEX wcT = { sizeof(WNDCLASSEX) };
+            wcT.lpfnWndProc = DefWindowProc;
+            wcT.hInstance = hInstance;
+            wcT.lpszClassName = L"TrayNotifyWnd";
+            RegisterClassEx(&wcT);
 
-	if (makePrimary) {
-		WNDCLASSEX wcT = { sizeof(WNDCLASSEX) };
-		wcT.lpfnWndProc = DefWindowProc;
-		wcT.hInstance = hInstance;
-		wcT.lpszClassName = L"TrayNotifyWnd";
-		RegisterClassEx(&wcT);
+            CreateWindowEx(0, L"TrayNotifyWnd", L"", WS_CHILD | WS_VISIBLE,
+                0, 0, 0, 0, hBar, NULL, hInstance, NULL);
+        }
 
-		CreateWindowEx(0, L"TrayNotifyWnd", L"", WS_CHILD | WS_VISIBLE,
-			0, 0, 0, 0, hBar, NULL, hInstance, NULL);
-	}
-
-	MARGINS margins = { -1 };
-	DwmExtendFrameIntoClientArea(hBar, &margins);
-	return hBar;
+        MARGINS margins = { -1 };
+        DwmExtendFrameIntoClientArea(hBar, &margins);
+        return hBar;
+    }
+    return NULL;
 }
 
 void BarInstance::Reposition() {
@@ -176,6 +199,8 @@ void BarInstance::ReloadConfig() {
 	InvalidateRect(hwnd, NULL, FALSE);
 }
 
+void BarInstance::SaveState() { ThemeLoader::Save(configFileName.c_str(), config); }
+
 void BarInstance::UpdateStats(const SystemStatusData &stats) {
 	if (renderer) {
 		renderer->UpdateStats(stats);
@@ -184,7 +209,6 @@ void BarInstance::UpdateStats(const SystemStatusData &stats) {
 }
 
 LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    static UINT WM_SHELLHOOKMESSAGE = RegisterWindowMessageW(L"SHELLHOOK");
 
     // Retrieve the instance pointer
     BarInstance *self = (BarInstance *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
@@ -277,11 +301,71 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
         }
         return 0;
     }
-    case WM_COPYDATA:
-        return TrayBackend::Get().HandleCopyData((HWND)wParam, (COPYDATASTRUCT *)lParam);
+    case WM_SETTINGCHANGE:
+        if (AppBarManager::Get().isUpdating) return 0;
+
+        if (wParam == SPI_SETWORKAREA) return 0;
+        if (lParam != 0 && _wcsicmp((wchar_t *)lParam, L"WorkArea") == 0) return 0;
+
+        self->ReloadConfig();
+        break;
+    case WM_NCHITTEST: {
+        if (self->interactionMode == InteractionMode::None)
+            return DefWindowProc(hwnd, uMsg, wParam, lParam);
+
+        if (self->interactionMode == InteractionMode::Move) return HTCAPTION;
+
+        if (self->interactionMode == InteractionMode::Resize) {
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            RECT rc; GetWindowRect(hwnd, &rc);
+            const int BORDER = 15;
+
+            if (self->config.global.position == "bottom") {
+                if (pt.y >= rc.top && pt.y < rc.top + BORDER) return HTTOP;
+            }
+            else if (self->config.global.position == "top") {
+                if (pt.y >= rc.bottom - BORDER && pt.y <= rc.bottom) return HTBOTTOM;
+            }
+            else if (self->config.global.position == "left") {
+                if (pt.x >= rc.right - BORDER && pt.x <= rc.right) return HTRIGHT;
+            }
+            else if (self->config.global.position == "right") {
+                if (pt.x >= rc.left && pt.x < rc.left + BORDER) return HTLEFT;
+            }
+            return HTCLIENT;
+        }
+        return HTCLIENT;
+    }
+    case WM_COPYDATA: {
+        COPYDATASTRUCT *cds = (COPYDATASTRUCT *)lParam;
+        if (!cds || !cds->lpData) return FALSE;
+
+        // 1. Peek at the first DWORD (cbSize)
+        // Both APPBARDATA and NOTIFYICONDATA start with a 'cbSize' member.
+        DWORD dataSize = *(DWORD *)cds->lpData;
+        const DWORD APPBARDATA_32_SIZE = 36;
+
+        if (dataSize == sizeof(APPBARDATA) || dataSize == APPBARDATA_32_SIZE) {
+            return AppBarManager::Get().HandleAppBarMessage(wParam, lParam);
+        }
+        else {
+            // It is likely a Tray Icon (NOTIFYICONDATA is much larger)
+            return TrayBackend::Get().HandleCopyData((HWND)wParam, cds);
+        }
+    }
     case WM_COMMAND:
-        MainMenu::HandleMenuCmd(hwnd, LOWORD(wParam));
+		MainMenu::HandleMenuCmd(hwnd, LOWORD(wParam));
         return 0;
+    case WM_GETMINMAXINFO: {
+        MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+        mmi->ptMaxTrackSize.x = GetSystemMetrics(SM_CXVIRTUALSCREEN) + 100;
+        mmi->ptMaxTrackSize.y = GetSystemMetrics(SM_CYVIRTUALSCREEN) + 100;
+        return 0;
+    }
+    case WM_EXITSIZEMOVE:
+        if (self->interactionMode != InteractionMode::None)
+            SendMessage(hwnd, WM_COMMAND, MainMenu::MenuCommand::CMD_INTERACT_SNAP, 0);
+        break;
         // Input Handling
     case WM_MOUSEMOVE:
         if (self->inputManager) self->inputManager->HandleMouseMove(hwnd, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
@@ -295,31 +379,24 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
     case WM_MOUSELEAVE:
         if (self->inputManager) self->inputManager->OnMouseLeave(hwnd);
         return 0;
-    case WM_HOTKEY:
-        if (wParam == 900) {
-            PostQuitMessage(0);
-            exit(0);
-        }
+    case WM_HOTKEY: {
+        if (wParam == 900) PostQuitMessage(0);
         break;
+    }
     case WM_TIMER:
         if (wParam == ANIMATION_TIMER_ID) {
             self->OnTimerTick(); // Handles animations
         }
-        else if (wParam == 1) {
-            // --- FIX: Handle the 1-second Stats Timer ---
-
-            // 1. Force Global Backend Update
+        else if (wParam == STATS_TIMER_ID) {
             if (Railing::instance) {
                 Railing::instance->UpdateGlobalStats();
 
-                // POLLING: Check Wifi status explicitly here
                 Railing::instance->networkBackend.GetCurrentStatus(
                     Railing::instance->cachedWifiState,
                     Railing::instance->cachedWifiSignal
                 );
             }
 
-            // 2. Sync to Renderer
             if (self->renderer && Railing::instance) {
                 SystemStatusData d;
                 d.cpuUsage = Railing::instance->cachedCpuUsage;
@@ -331,13 +408,10 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
                 d.isMuted = Railing::instance->cachedMute;
 
                 self->renderer->UpdateStats(d);
-
-                // 3. Force Repaint
                 InvalidateRect(hwnd, NULL, FALSE);
             }
         }
         return 0;
-
         // Shell Hooks
     default:
         if (uMsg == WM_SHELLHOOKMESSAGE) {
@@ -358,27 +432,14 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 }
 
 void BarInstance::OnTimerTick() {
-    static int tickCount = 0;
     tickCount++;
 
-    // Update stats every ~1 second (1000ms)
-    // 16ms * 60 ticks ~= 960ms
+    // --- 1. STATS UPDATE (Keep existing logic) ---
     if (tickCount % 60 == 0) {
-
-        // 1. Trigger Global Updates (CPU, RAM, GPU)
         if (Railing::instance) {
             Railing::instance->UpdateGlobalStats();
-
-            // --- FIX 1: RESTORE WIFI POLLING ---
-            // The old code polled this every 2s. We do it here every 1s.
-            // This updates the cached variables in the global instance.
-            Railing::instance->networkBackend.GetCurrentStatus(
-                Railing::instance->cachedWifiState,
-                Railing::instance->cachedWifiSignal
-            );
+            Railing::instance->networkBackend.GetCurrentStatus(Railing::instance->cachedWifiState, Railing::instance->cachedWifiSignal);
         }
-
-        // 2. Sync Global Data -> This Bar
         if (renderer && Railing::instance) {
             SystemStatusData d;
             d.cpuUsage = Railing::instance->cachedCpuUsage;
@@ -390,17 +451,108 @@ void BarInstance::OnTimerTick() {
             d.isMuted = Railing::instance->cachedMute;
 
             renderer->UpdateStats(d);
-            InvalidateRect(hwnd, NULL, FALSE);
+            // Don't InvalidateRect here, we do it at the end of the function now
         }
     }
 
-    // Auto-hide logic (Keep your existing)
+    // --- 2. ROBUST AUTO-HIDE LOGIC ---
     if (config.global.autoHide) {
-        if (showProgress != 1.0f) {
-            showProgress = 1.0f;
-            isHidden = false;
-            Reposition();
+
+        // A. Get Mouse & Geometry
+        POINT pt; GetCursorPos(&pt);
+        RECT rcWindow; GetWindowRect(hwnd, &rcWindow);
+
+        // B. Identify Monitor based on MOUSE (More reliable than Window when hidden)
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        GetMonitorInfo(hMon, &mi);
+
+        // C. Determine "Intention" (Show or Hide?)
+        // We use a simple distance check. If mouse is within 10px of the edge, SHOW.
+        // If mouse is inside the bar (while open), KEEP SHOWING.
+
+        bool shouldShow = false;
+        const int TRIGGER_DIST = 4; // Easy hit
+
+        // We also check if the mouse is hovering the CURRENT window rect
+        // (This keeps it open while you use it)
+        bool isHoveringWindow = PtInRect(&rcWindow, pt);
+
+        if (config.global.position == "bottom") {
+            bool atEdge = pt.y >= mi.rcMonitor.bottom - TRIGGER_DIST;
+            shouldShow = atEdge || isHoveringWindow;
         }
-        return;
+        else if (config.global.position == "top") {
+            bool atEdge = pt.y <= mi.rcMonitor.top + TRIGGER_DIST;
+            shouldShow = atEdge || isHoveringWindow;
+        }
+        else if (config.global.position == "left") {
+            bool atEdge = pt.x <= mi.rcMonitor.left + TRIGGER_DIST;
+            shouldShow = atEdge || isHoveringWindow;
+        }
+        else if (config.global.position == "right") {
+            bool atEdge = pt.x >= mi.rcMonitor.right - TRIGGER_DIST;
+            shouldShow = atEdge || isHoveringWindow;
+        }
+
+        // D. Calculate Target
+        int currentW = rcWindow.right - rcWindow.left;
+        int currentH = rcWindow.bottom - rcWindow.top;
+        int targetX = rcWindow.left;
+        int targetY = rcWindow.top;
+        const int PEEK = 2; // The 2px sliver
+
+        if (config.global.position == "bottom") {
+            int visibleY = mi.rcMonitor.bottom - currentH;
+            int hiddenY = mi.rcMonitor.bottom - PEEK;
+            targetY = shouldShow ? visibleY : hiddenY;
+        }
+        else if (config.global.position == "top") {
+            int visibleY = mi.rcMonitor.top;
+            int hiddenY = mi.rcMonitor.top - currentH + PEEK;
+            targetY = shouldShow ? visibleY : hiddenY;
+        }
+        else if (config.global.position == "left") {
+            int visibleX = mi.rcMonitor.left;
+            int hiddenX = mi.rcMonitor.left - currentW + PEEK;
+            targetX = shouldShow ? visibleX : hiddenX;
+        }
+        else if (config.global.position == "right") {
+            int visibleX = mi.rcMonitor.right - currentW;
+            int hiddenX = mi.rcMonitor.right - PEEK;
+            targetX = shouldShow ? visibleX : hiddenX;
+        }
+
+        // E. Apply Movement
+        int currentX = rcWindow.left;
+        int currentY = rcWindow.top;
+
+        if (currentX != targetX || currentY != targetY) {
+            // Lerp (Smooth Slide)
+            int stepX = (targetX - currentX) / 3; // Fast slide
+            int stepY = (targetY - currentY) / 3;
+
+            // Snap when close to avoid jitter
+            if (abs(targetX - currentX) < 2) stepX = targetX - currentX;
+            else if (stepX == 0) stepX = (targetX > currentX) ? 1 : -1;
+
+            if (abs(targetY - currentY) < 2) stepY = targetY - currentY;
+            else if (stepY == 0) stepY = (targetY > currentY) ? 1 : -1;
+
+            // [CRITICAL FIX]
+            // 1. HWND_TOPMOST: Forces it above maximized windows
+            // 2. SWP_NOACTIVATE: Prevents stealing focus from games/IDE
+            // 3. Flags: We DO NOT use SWP_ASYNCWINDOWPOS to ensure it happens now.
+
+            SetWindowPos(hwnd, HWND_TOPMOST,
+                currentX + stepX,
+                currentY + stepY,
+                0, 0,
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+            // Force visual refresh immediately
+            InvalidateRect(hwnd, NULL, FALSE);
+            UpdateWindow(hwnd);
+        }
     }
 }

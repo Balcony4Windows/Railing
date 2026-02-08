@@ -3,6 +3,39 @@
 #include <sstream>
 #include <iomanip>
 
+void CommandExecutor::SafetyTest(HINSTANCE hInst)
+{
+    if ((INT_PTR)hInst <= 32) {
+        LPCWSTR errorMessage = nullptr;
+
+        switch ((INT_PTR)hInst) {
+        case 0:
+            errorMessage = L"Error: The operating system is out of memory or resources.";
+            break;
+        case ERROR_FILE_NOT_FOUND:
+            errorMessage = L"Error: The specified file was not found.";
+            break;
+        case ERROR_PATH_NOT_FOUND:
+            errorMessage = L"Error: The specified path was not found.";
+            break;
+        case ERROR_BAD_FORMAT:
+            errorMessage = L"Error: Invalid executable format.";
+            break;
+            // Add other cases as needed
+        default: {
+            wchar_t buffer[100];
+            swprintf_s(buffer, 100, L"Error: Unknown error code %d", (INT_PTR)hInst);
+            errorMessage = buffer;
+            MessageBoxW(NULL, errorMessage, L"ShellExecuteW Error", MB_OK | MB_ICONERROR);
+            return;
+        }
+        }
+
+        MessageBoxW(NULL, errorMessage, L"ShellExecuteW Error", MB_OK | MB_ICONERROR);
+    }
+    else MessageBoxW(NULL, L"ShellExecuteW succeeded.", L"Success", MB_OK | MB_ICONINFORMATION);
+}
+
 void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {
     if (command.empty()) return;
 
@@ -19,11 +52,13 @@ void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {
         LockWorkStation();
     }
     else if (command == "taskmgr") {
-        ShellExecute(NULL, NULL, L"taskmgr.exe", NULL, NULL, SW_SHOWNORMAL);
+        SafetyTest(
+            ShellExecute(NULL, NULL, L"taskmgr.exe", NULL, NULL, SW_SHOWNORMAL));
     }
     else if (command == "run") {
         // Only works via COM usually, but this shortcut works often
-        ShellExecute(NULL, NULL, L"explorer.exe", L"Shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}", NULL, SW_SHOWNORMAL);
+        SafetyTest(
+            ShellExecute(NULL, NULL, L"explorer.exe", L"Shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}", NULL, SW_SHOWNORMAL));
     }
     else if (command.rfind("search:", 0) == 0) {
         std::string param = command.substr(7); // search:
@@ -52,7 +87,8 @@ void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {
         // Usage: "shell:ms-settings:display"
         std::string target = command.substr(6);
         std::wstring wtarget(target.begin(), target.end());
-        ShellExecuteW(NULL, L"open", wtarget.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        SafetyTest(
+            ShellExecuteW(NULL, L"open", wtarget.c_str(), NULL, NULL, SW_SHOWNORMAL));
     }
 }
 
@@ -88,7 +124,8 @@ void CommandExecutor::SearchWeb(std::string term, std::string engine="google") {
 
     std::string fullUrl = baseUrl + UrlEncode(term);
     std::wstring wUrl(fullUrl.begin(), fullUrl.end());
-    ShellExecuteW(NULL, L"open", wUrl.c_str(), NULL, NULL, SW_SHOWNORMAL);
+    SafetyTest(
+        ShellExecuteW(NULL, L"open", wUrl.c_str(), NULL, NULL, SW_SHOWNORMAL));
 }
 
 void CommandExecutor::SendWinKey(char key) {
@@ -102,5 +139,6 @@ void CommandExecutor::SendWinKey(char key) {
 
 void CommandExecutor::OpenProcess(std::string cmd) {
     std::wstring wcmd(cmd.begin(), cmd.end());
-    ShellExecuteW(NULL, L"open", wcmd.c_str(), NULL, NULL, SW_SHOWNORMAL);
+    SafetyTest(
+        ShellExecuteW(NULL, L"open", wcmd.c_str(), NULL, NULL, SW_SHOWNORMAL));
 }

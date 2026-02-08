@@ -78,4 +78,8 @@ private:
     static void CALLBACK WinEventProc(HWINEVENTHOOK hook, DWORD event,
         HWND hwnd, LONG idObject, LONG idChild,
         DWORD dwEventThread, DWORD dwmsEventTime);
+
+    const char *SESSION_FILE = "session.json";
+    void SaveSession();
+    void LoadSession();
 };

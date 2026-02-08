@@ -117,6 +117,23 @@ RailingRenderer::~RailingRenderer()
     if (pWriteFactory) pWriteFactory->Release();
 }
 
+void RailingRenderer::SetScreenPosition(std::string newPos)
+{
+	this->theme.global.position = newPos;
+    auto updateList = [&](std::vector<Module *> &list) {
+        for (Module *m : list) {
+            m->config.position = newPos;
+            if (m->config.position == "group") {
+                GroupModule *g = static_cast<GroupModule *>(m);
+                for (Module *child : g->children) child->config.position = newPos;
+            }
+        }
+    };
+	updateList(leftModules);
+	updateList(centerModules);
+	updateList(rightModules);
+}
+
 void RailingRenderer::Reload(const char *name)
 {
     ThemeConfig newTheme = ThemeLoader::Load(name);
@@ -501,8 +518,7 @@ void RailingRenderer::LoadAppIcon()
         LR_LOADFROMFILE
     );
 
-    // Fallback: Load from Resource if file missing
-    if (!hIcon) {
+    if (!hIcon) { // Fallback: Load from Resource if file missing
         hIcon = (HICON)LoadImageW(
             GetModuleHandle(NULL),
             MAKEINTRESOURCE(IDI_ICON1),

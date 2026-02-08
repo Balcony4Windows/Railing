@@ -132,7 +132,7 @@ bool NetworkFlyout::OnSetCursor(int x, int y) {
                     if (lx >= infoLeft && lx <= infoLeft + infoSize && ly >= contentY && ly <= contentY + infoSize) hand = true;
                 }
                 else {
-                    float infoLeft = 5 + 15;
+                    float infoLeft = 5.0f + 15.0f;
                     if (lx >= infoLeft && lx <= infoLeft + infoSize && ly >= contentY && ly <= contentY + infoSize) hand = true;
                     if (lx > width - 85 && lx < width - 10 && ly >= contentY && ly <= contentY + 35) hand = true;
 
@@ -403,18 +403,18 @@ void NetworkFlyout::Draw() {
 
     float scale = GetDpiForWindow(hwnd) / 96.0f;
     pRenderTarget->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale));
-    float logicalW = (float)width;
+    float logicalW = static_cast<float>(width);
     std::wstring titleText = L"Wi-Fi Networks";
     if (isScanning) titleText = L"Scanning...";
     pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
     pTextBrush->SetColor(D2D1::ColorF(1, 1, 1, currentAlpha));
-    pRenderTarget->DrawTextW(titleText.c_str(), (UINT32)titleText.length(), pTextFormat, D2D1::RectF(0, 0, logicalW, (float)headerHeight), pTextBrush);
+    pRenderTarget->DrawTextW(titleText.c_str(), (UINT32)titleText.length(), pTextFormat, D2D1::RectF(0, 0, logicalW, static_cast<float>(headerHeight)), pTextBrush);
     pHighlightBrush->SetColor(D2D1::ColorF(1, 1, 1, 0.1f * currentAlpha));
-    pRenderTarget->DrawLine(D2D1::Point2F(15, (float)headerHeight), D2D1::Point2F(logicalW - 15, (float)headerHeight), pHighlightBrush, 1.0f);
+    pRenderTarget->DrawLine(D2D1::Point2F(15.0f, (float)headerHeight), D2D1::Point2F(logicalW - 15, static_cast<float>(headerHeight)), pHighlightBrush, 1.0f);
 
-    pRenderTarget->PushAxisAlignedClip(D2D1::RectF(0, (float)headerHeight, logicalW, (float)currentWindowHeight - 5), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    pRenderTarget->PushAxisAlignedClip(D2D1::RectF(0, static_cast<float>(headerHeight), logicalW, static_cast<float>(currentWindowHeight) - 5), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
 
     if (cachedNetworks.empty()) {
         // If the list is empty, show status text in the middle
@@ -596,8 +596,8 @@ void NetworkFlyout::Draw() {
         float time = (float)GetTickCount64() / 1000.0f;
         float t = fmod(time * 1.5f, 1.0f); // Speed multiplier
 
-        float barWidth = width * 0.3f; // Bar is 30% width of window
-        float range = width + barWidth;
+        float barWidth = static_cast<float>(width) * 0.3f; // Bar is 30% width of window
+        float range = static_cast<float>(width) + barWidth;
         float offset = (range * t) - barWidth;
 
         // Calculate raw positions
@@ -606,7 +606,7 @@ void NetworkFlyout::Draw() {
 
         // Clip to window bounds so it doesn't draw outside
         float clStart = max(startX, 0.0f);
-        float clEnd = min(endX, (float)width);
+        float clEnd = min(endX, static_cast<float>(width));
 
         if (clEnd > clStart) {
             D2D1_RECT_F barRect = D2D1::RectF(clStart, trackY, clEnd, trackY + trackH);
@@ -618,7 +618,7 @@ void NetworkFlyout::Draw() {
     }
 
     if (maxScroll > 0) {
-        float trackH = (float)currentWindowHeight - headerHeight - 10;
+        float trackH = static_cast<float>(currentWindowHeight - headerHeight - 10);
         float thumbH = max(30.0f, trackH * (trackH / (trackH + maxScroll)));
         float thumbY = headerHeight + 5 + (scrollOffset / maxScroll) * (trackH - thumbH);
         D2D1_RECT_F thumb = D2D1::RectF(logicalW - 6, thumbY, logicalW - 2, thumbY + thumbH);

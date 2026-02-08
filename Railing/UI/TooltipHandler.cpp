@@ -44,18 +44,8 @@ LRESULT CALLBACK TooltipWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
         return 0;
     }
     else if (uMsg == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
-    else if (uMsg == WM_MOUSEMOVE) {
-        if (!tracking) {
-            TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
-            TrackMouseEvent(&tme);
-            tracking = true;
-        }
-    }
-    else if (uMsg == WM_MOUSELEAVE) {
-        tracking = false;
-        if (handler) handler->Hide();
-    }
-
+    else if (uMsg == WM_NCHITTEST) return HTTRANSPARENT;
+    else if (uMsg == WM_ERASEBKGND) return 1;
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
@@ -75,7 +65,7 @@ void TooltipHandler::Initialize(HWND hParent) {
     RegisterClass(&wc);
 
     hwndTooltip = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
         L"RailingTooltip", L"",
         WS_POPUP,
         0, 0, 0, 0,

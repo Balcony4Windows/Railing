@@ -25,6 +25,7 @@ public:
     std::vector<Module *> leftModules;
     std::vector<Module *> centerModules;
     std::vector<Module *> rightModules;
+    void SetScreenPosition(std::string newPos);
 
     SystemStatusData currentStats;
 

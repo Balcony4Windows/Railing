@@ -155,6 +155,7 @@ xcopy "$(SolutionDir)presets\config.json" "$(OutDir)" /Y /D</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AppBarManager.h" />
     <ClInclude Include="App\AppBarRegistration.h" />
     <ClInclude Include="App\Railing.h" />
     <ClInclude Include="App\WindowManager.h" />

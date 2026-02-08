@@ -85,7 +85,7 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
             int size_needed = MultiByteToWideChar(CP_UTF8, 0, &tip[0], (int)tip.size(), NULL, 0);
             if (size_needed > 0) {
                 std::wstring wstrTo(size_needed, 0);
-                MultiByteToWideChar(CP_UTF8, 0, tip.c_str(), -1, &wstrTo[0], size_needed);
+                MultiByteToWideChar(CP_UTF8, 0, tip.c_str(), (int)tip.size(), &wstrTo[0], size_needed);
                 newText = (wstrTo != L"null") ? wstrTo : L"";
             }
         }
@@ -164,10 +164,9 @@ void InputManager::HandleMouseMove(HWND hwnd, int x, int y)
                             int index = (int)(offset / (itemBoxStride + iSpace));
                             float relativePos = fmod(offset, (itemBoxStride + iSpace));
 
-                            static int lastHoveredDockIndex = -1;
                             if (index != lastHoveredDockIndex && index >= 0 && index < count) {
                                 dock->suppressPreview = false;
-                                lastHoveredDockIndex = index;
+                                this->lastHoveredDockIndex = index;
                             }
 
                             if (relativePos <= itemBoxStride && index >= 0 && index < count) {
@@ -236,7 +235,6 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
         float logicalX = (float)x / scale;
         float logicalY = (float)y / scale;
         int clickedRow = -1;
-
         if (dock->HitTestPreview(logicalX, logicalY, clickedRow)) {
             if (clickedRow >= 0) {
                 dock->ClickPreviewItem(clickedRow);
@@ -246,8 +244,8 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
         }
 
         dock->ForceHidePreview();
+        this->lastHoveredDockIndex = -1; // Un-suppress preview
 
-        // --- FIXED VERTICAL CLICK LOGIC ---
         std::string pos = renderer->theme.global.position;
         bool isVertical = (pos == "left" || pos == "right");
 
@@ -260,18 +258,15 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
         Style itemStyle = dock->config.itemStyle;
         float paddingMain = isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right);
         float itemBoxStride = iSize + paddingMain;
-
         float marginMain = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
         float iSpace = (dock->config.dockSpacing > 0) ? dock->config.dockSpacing : marginMain;
 
         int count = dock->GetCount();
         if (count > 0) {
             float totalLength = (count * itemBoxStride) + ((count - 1) * iSpace);
-
             float marginStart = isVertical ? s.margin.top : s.margin.left;
             float marginEnd = isVertical ? s.margin.bottom : s.margin.right;
             float bgLength = modLength - marginStart - marginEnd;
-
             float startPos = marginStart + ((bgLength - totalLength) / 2.0f);
 
             if (clickPos >= startPos && clickPos <= (startPos + totalLength)) {
@@ -282,7 +277,8 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
                 if (relativePos <= itemBoxStride && index >= 0 && index < count) {
                     WindowInfo info = dock->GetWindowInfoAtIndex(index);
                     if (info.hwnd == NULL) {
-                        ShellExecuteW(NULL, L"open", info.exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                        HINSTANCE hInst = ShellExecuteW(NULL, L"open", info.exePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                        CommandExecutor::SafetyTest(hInst);
                     }
                     else {
                         HWND currentFg = GetForegroundWindow();
@@ -355,7 +351,10 @@ void InputManager::HandleLeftClick(HWND hwnd, int x, int y) {
             barInstance->trayFlyout->Toggle(r);
         }
     }
-    else if (type == "battery") { ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL); }
+    else if (type == "battery") {
+        CommandExecutor::SafetyTest(
+            ShellExecute(NULL, L"open", L"ms-settings:batterysaver", NULL, NULL, SW_SHOWNORMAL));
+}
     else if (type == "app_icon") { SendMessage(hwnd, WM_SYSCOMMAND, SC_TASKLIST, 0); }
     else if (type == "notification") { CommandExecutor::Execute("notification", hwnd); }
     else if (type == "custom" || type == "ping" || type == "weather" || type == "clock") {
@@ -425,7 +424,8 @@ void InputManager::HandleRightClick(HWND hwnd, int x, int y) {
                 if (cmd == 100) {
                     std::wstring path = targetWin.exePath;
                     if (path.empty() && targetWin.hwnd) path = WindowMonitor::GetWindowExePath(targetWin.hwnd);
-                    if (!path.empty()) ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                    if (!path.empty()) CommandExecutor::SafetyTest(
+                        ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL, SW_SHOWNORMAL));
                 }
                 else if (cmd == 101) {
                     std::wstring path = targetWin.exePath;
@@ -522,6 +522,9 @@ void InputManager::OnMouseLeave(HWND hwnd) {
 
             // 1. Check if we moved into the preview window/gap (Valid Transition)
             if (dock->m_previewWin && dock->IsMouseInPreviewOrGap()) {
+                tooltips->Hide();
+                lastTooltipText.clear();
+                isTrackingMouse = false;
                 return;
             }
 
@@ -534,6 +537,7 @@ void InputManager::OnMouseLeave(HWND hwnd) {
             }
 
             dock->suppressPreview = false;
+            lastHoveredDockIndex = -1;
         }
     }
     if (isTrackingMouse) {

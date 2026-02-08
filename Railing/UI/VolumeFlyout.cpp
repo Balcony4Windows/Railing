@@ -165,6 +165,8 @@ LRESULT CALLBACK VolumeFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, L
             EndPaint(hwnd, &ps);
             return 0;
         }
+        case WM_MOUSEACTIVATE:
+			return MA_NOACTIVATE;
         case WM_LBUTTONDOWN:
             SetCapture(hwnd);
             self->OnClick(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));

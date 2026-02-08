@@ -32,7 +32,7 @@ public:
     enum class AnimationState { Hidden, Entering, Visible, Exiting };
     AnimationState animState = AnimationState::Hidden;
     bool IsVisible() override {
-        return (hwnd && IsWindowVisible(hwnd) && animState != AnimationState::Hidden);
+        return (hwnd && IsWindowVisible(hwnd));
     }
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);

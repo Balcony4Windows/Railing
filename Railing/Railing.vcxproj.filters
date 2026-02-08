@@ -173,6 +173,9 @@
     <ClInclude Include="UI\MainMenu.h">
       <Filter>UI</Filter>
     </ClInclude>
+    <ClInclude Include="AppBarManager.h">
+      <Filter>App</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">

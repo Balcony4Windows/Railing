@@ -38,6 +38,7 @@ class DockModule : public Module {
 
     int cleanupCounter = 0;
     int keepAliveFrames = 0;
+    size_t lastInputWindowCount = 0;
 
     size_t GetPathHash(const std::wstring &path) {
         std::wstring lower = path;
@@ -161,9 +162,10 @@ class DockModule : public Module {
     }
 
     void UpdateStableList(RenderContext &ctx) {
-        if (!isDirty && !optimisticHwnd) return;
-        if (!ctx.windows) return;
+        size_t currentWinCount = ctx.windows ? ctx.windows->size() : 0;
+        if (!isDirty && !optimisticHwnd && currentWinCount == lastInputWindowCount) return;
 
+        lastInputWindowCount = currentWinCount; // Update for next frame
         isDirty = false;
         std::vector<const WindowInfo *> zOrderList;
 
@@ -285,6 +287,7 @@ public:
         }
         m_pinnedApps.push_back({ path, L"", name, iconPath, iconIndex });
         PinnedAppsIO::Save(m_pinnedApps);
+        isDirty = true;
     }
 
     void UnpinApp(std::wstring path) {
@@ -293,6 +296,7 @@ public:
         if (it != m_pinnedApps.end()) {
             m_pinnedApps.erase(it, m_pinnedApps.end());
             PinnedAppsIO::Save(m_pinnedApps);
+            isDirty = true;
         }
     }
 
@@ -393,11 +397,8 @@ public:
 
         size_t count = stableList.size();
 
-        // Calculate Main Axis dimensions
-        float itemBoxSize = iconSize; // Assume square
-        // Add padding to main axis size
+        float itemBoxSize = iconSize;
         float itemBoxStride = itemBoxSize + (isVertical ? (itemStyle.padding.top + itemStyle.padding.bottom) : (itemStyle.padding.left + itemStyle.padding.right));
-
         float itemSpacing = isVertical ? (itemStyle.margin.top + itemStyle.margin.bottom) : (itemStyle.margin.left + itemStyle.margin.right);
         if (spacing > 0) itemSpacing = spacing;
 

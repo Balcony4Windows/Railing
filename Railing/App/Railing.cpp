@@ -25,6 +25,9 @@ Railing::Railing()
 {}
 
 Railing::~Railing() {
+    if (!bars.empty() && bars[0]->GetHwnd())
+        KillTimer(bars[0]->GetHwnd(), 1);
+
     for (auto *bar : bars) {
         delete bar;
     }
@@ -33,7 +36,7 @@ Railing::~Railing() {
     if (titleHook) UnhookWinEvent(titleHook);
     if (focusHook) UnhookWinEvent(focusHook);
     if (windowLifecycleHook) UnhookWinEvent(windowLifecycleHook);
-    OleUninitialize();
+    CoUninitialize();
 }
 
 void Railing::CreateNewBar(const std::string &configName) {
@@ -46,6 +49,7 @@ void Railing::CreateNewBar(const std::string &configName) {
     }
 
     bars.push_back(bar);
+    SaveSession();
 }
 
 void Railing::DuplicateBar(BarInstance *source) {
@@ -75,6 +79,7 @@ void Railing::DeleteBar(BarInstance *target) {
     if (it != bars.end()) {
         bars.erase(it);
         delete target;
+        SaveSession();
     }
 }
 
@@ -104,11 +109,9 @@ bool Railing::Initialize(HINSTANCE hInstance) {
         nullptr, WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
     // Create primary bar
-    CreateNewBar("config.json");
+    Railing::instance->LoadSession();
     if (bars.empty()) return false;
 
-
-    // Start global stats timer (use primary bar's window for convenience)
     SetTimer(bars[0]->GetHwnd(), 1, 1000, NULL);
 
     return true;
@@ -132,6 +135,36 @@ void CALLBACK Railing::WinEventProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
     for (auto *bar : instance->bars) {
         InvalidateRect(bar->GetHwnd(), nullptr, FALSE);
         if (event == EVENT_SYSTEM_FOREGROUND) bar->workspaces.AddWindow(hwnd);
+    }
+}
+
+void Railing::SaveSession() {
+    std::ofstream out(SESSION_FILE);
+	out << "{ \"bars\": [\n";
+
+    for (size_t i = 0; i < bars.size(); i++) {
+		std::string path = bars[i]->configFileName;
+        out << "    \"" << path << "\"" << (i < bars.size() - 1 ? "," : "") << "\n";
+    }
+    out << "  ]}\n}";
+    out.close();
+}
+
+void Railing::LoadSession() {
+	std::ifstream in(SESSION_FILE);
+    if (!in.is_open()) {
+        CreateNewBar("config.json");
+        return;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+		size_t quoteStart = line.find('\"');
+		size_t quoteEnd = line.rfind('\"');
+        if (quoteStart != std::string::npos && quoteEnd != std::string::npos && quoteEnd > quoteStart) {
+            std::string path = line.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+            if (path != "bars") CreateNewBar(path); // Skip key name
+        }
     }
 }
 

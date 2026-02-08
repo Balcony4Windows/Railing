@@ -13,7 +13,13 @@ class InputManager;
 class VolumeFlyout;
 class TrayFlyout;
 class NetworkFlyout;
-class IDropTarget;
+struct IDropTarget;
+
+enum class InteractionMode {
+    None = 0,
+    Resize,
+    Move,
+};
 
 class BarInstance {
 public:
@@ -23,6 +29,7 @@ public:
     bool Initialize(HINSTANCE hInstance, bool makePrimary = false);
     void Reposition();
     void ReloadConfig();
+    void SaveState();
     void UpdateStats(const SystemStatusData &stats);
 
     HWND GetHwnd() const { return hwnd; }
@@ -48,7 +55,9 @@ public:
     // Auto-hide state
     float showProgress = 1.0f;
     bool isHidden = false;
+    InteractionMode interactionMode = InteractionMode::None;
     ULONGLONG lastInteractionTime = 0;
+    int tickCount = 0;
 
     IDropTarget *pDropTarget = nullptr;
 

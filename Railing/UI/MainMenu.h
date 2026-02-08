@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <commdlg.h>
+#include <BarInstance.h>
 
 class MainMenu
 {
@@ -30,13 +31,14 @@ public:
 		CMD_SYSTEM_RESTART_SHELL,
 		CMD_SYSTEM_EXIT_TO_EXPLORER,
 
-		CMD_ABOUT = 1500
+		CMD_ABOUT = 1500,
+		CMD_AUTOHIDE
 	};
 	/// <summary>
 	/// Creates the context menu for the taskbar
 	/// </summary>
 	/// <returns>context menu</returns>
-	static HMENU CreateTaskbarContextMenu();
+	static HMENU CreateTaskbarContextMenu(BarInstance *bar);
 	/// <summary>
 	/// Shows the menu at the specified screen point
 	/// </summary>

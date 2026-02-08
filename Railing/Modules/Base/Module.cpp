@@ -5,7 +5,7 @@ void Module::Draw(RenderContext &ctx, float x, float y, float constraintSize) {
     float paddingY = config.baseStyle.padding.top + config.baseStyle.padding.bottom;
     float contentSize = GetContentWidth(ctx);
 
-    float finalX, finalY, finalW, finalH;
+    float finalX, finalY, finalW  , finalH;
 
     if (!ctx.isVertical) {
         // Horizontal

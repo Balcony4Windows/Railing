@@ -15,6 +15,7 @@ class InputManager
 	BarInstance *barInstance;
 	RailingRenderer *renderer;
 
+	int lastHoveredDockIndex = -1;
 	bool isTrackingMouse = false;
 	std::wstring lastTooltipText;
 

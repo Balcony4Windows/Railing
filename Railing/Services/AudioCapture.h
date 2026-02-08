@@ -35,7 +35,7 @@ private:
     std::thread captureThread;
     std::mutex dataMutex;
     std::vector<float> currentBuffer;
-    const int FFT_SIZE = 512;
+    static constexpr size_t FFT_SIZE = 512;
 
     void Loop() {
         HRESULT hr;
@@ -91,7 +91,7 @@ private:
                     int bitsPerSample = pwfx->wBitsPerSample;
                     int bytesPerFrame = pwfx->nBlockAlign;
 
-                    for (UINT32 i = 0; i < numFramesAvailable && i < FFT_SIZE; i++) {
+                    for (size_t i = 0; i < numFramesAvailable && i < FFT_SIZE; i++) {
                         float sample = 0.0f;
                         BYTE *framePtr = pData + (i * bytesPerFrame);
 
