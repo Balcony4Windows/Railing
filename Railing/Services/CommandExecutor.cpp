@@ -33,7 +33,6 @@ void CommandExecutor::SafetyTest(HINSTANCE hInst)
 
         MessageBoxW(NULL, errorMessage, L"ShellExecuteW Error", MB_OK | MB_ICONERROR);
     }
-    else MessageBoxW(NULL, L"ShellExecuteW succeeded.", L"Success", MB_OK | MB_ICONINFORMATION);
 }
 
 void CommandExecutor::Execute(const std::string &command, HWND hwndBar) {

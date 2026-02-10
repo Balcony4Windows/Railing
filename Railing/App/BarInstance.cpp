@@ -54,25 +54,46 @@ BarInstance::~BarInstance() {
 
 bool BarInstance::Initialize(HINSTANCE hInstance, bool makePrimary) {
     this->isPrimary = makePrimary;
-
+    SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
     hwnd = CreateBarWindow(hInstance, makePrimary);
     if (!hwnd) return false;
+    if (makePrimary && config.global.autoHide) {
+        RAWINPUTDEVICE rid;
+        rid.usUsagePage = 0x01;  // Generic desktop
+        rid.usUsage = 0x02;      // Mouse
+        rid.dwFlags = RIDEV_INPUTSINK; // Receive input even when not in foreground
+        rid.hwndTarget = hwnd;
+
+        if (!RegisterRawInputDevices(&rid, 1, sizeof(rid))) {
+            OutputDebugStringW(L"[RAILING] Failed to register raw input!\n");
+        }
+    }
     if (isPrimary) {
 		RegisterAppBar(hwnd);
-		UpdateAppBarPosition(hwnd, config);
+        if (!config.global.autoHide) UpdateAppBarPosition(hwnd, config);
+        else {
+            HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+            MONITORINFO mi = { sizeof(mi) };
+            GetMonitorInfo(hMon, &mi);
+            RECT rcMon = mi.rcMonitor;
+            float dpi = (float)GetDpiForWindow(hwnd);
+            int height = (int)(config.global.height * (dpi / 96.0f));
+            int width = rcMon.right - rcMon.left;
+            int x = rcMon.left;
+            int y = rcMon.bottom - 1;
+            if (config.global.position == "top") y = rcMon.top;
+            SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
     }
     RegisterHotKey(hwnd, 900, MOD_CONTROL | MOD_SHIFT, 0x51);
     if (makePrimary) {
         RegisterShellHookWindow(hwnd);
 
-        // --- FIX: Restore ALL Message Filters from Old Railing.cpp ---
-        // Critical for Drag/Drop and Tray Icons crossing process boundaries
         ChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
         ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD);
         ChangeWindowMessageFilter(0x0049, MSGFLT_ADD); // WM_COPYGLOBALDATA - Vital for Tray!
         ChangeWindowMessageFilter(WM_TASKBARCREATED, MSGFLT_ADD);
 
-        // --- FIX: Tell the world we exist so they send us icons ---
         SendNotifyMessage(HWND_BROADCAST, RegisterWindowMessage(L"TaskbarCreated"), 0, 0);
 
         for (int i = 0; i < 5; i++) RegisterHotKey(hwnd, 100 + i, MOD_ALT | MOD_NOREPEAT, 0x31 + i);
@@ -160,7 +181,7 @@ HWND BarInstance::CreateBarWindow(HINSTANCE hInstance, bool makePrimary) {
     else {
         int x = 0, y = 0, w = 800, h = 50;
         HWND hBar = CreateWindowEx(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+            WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
             className, L"Railing",
             WS_POPUP, x, y, w, h,
             nullptr, nullptr, hInstance, this);
@@ -237,7 +258,18 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 
     case WM_ERASEBKGND:
         return 1;
-
+    case WM_INPUT: {
+        if (self->config.global.autoHide) {
+            // Force autohide check on every mouse input
+            static DWORD lastCheck = 0;
+            DWORD now = GetTickCount64();
+            if (now - lastCheck > 16) { // Throttle to ~60fps
+                self->OnTimerTick();
+                lastCheck = now;
+            }
+        }
+        return 0;
+    }
         // --- FIX 1: Restore Cursor Hand Logic ---
     case WM_SETCURSOR:
         if (LOWORD(lParam) == HTCLIENT && self->renderer) {
@@ -431,10 +463,30 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
+bool IsFullscreenWindowActive() {
+    HWND foreground = GetForegroundWindow();
+    if (!foreground || foreground == GetDesktopWindow() || foreground == GetShellWindow())
+        return false;
+
+    RECT windowRect;
+    if (GetWindowRect(foreground, &windowRect)) {
+        HMONITOR hMon = MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(mi) };
+        if (GetMonitorInfo(hMon, &mi)) {
+            // Check if the window matches or exceeds the monitor dimensions
+            return (windowRect.left <= mi.rcMonitor.left &&
+                windowRect.top <= mi.rcMonitor.top &&
+                windowRect.right >= mi.rcMonitor.right &&
+                windowRect.bottom >= mi.rcMonitor.bottom);
+        }
+    }
+    return false;
+}
+
 void BarInstance::OnTimerTick() {
     tickCount++;
 
-    // --- 1. STATS UPDATE (Keep existing logic) ---
+    // --- 1. STATS UPDATE ---
     if (tickCount % 60 == 0) {
         if (Railing::instance) {
             Railing::instance->UpdateGlobalStats();
@@ -451,108 +503,66 @@ void BarInstance::OnTimerTick() {
             d.isMuted = Railing::instance->cachedMute;
 
             renderer->UpdateStats(d);
-            // Don't InvalidateRect here, we do it at the end of the function now
         }
     }
 
-    // --- 2. ROBUST AUTO-HIDE LOGIC ---
     if (config.global.autoHide) {
-
-        // A. Get Mouse & Geometry
         POINT pt; GetCursorPos(&pt);
-        RECT rcWindow; GetWindowRect(hwnd, &rcWindow);
 
-        // B. Identify Monitor based on MOUSE (More reliable than Window when hidden)
         HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
         MONITORINFO mi = { sizeof(mi) };
         GetMonitorInfo(hMon, &mi);
 
-        // C. Determine "Intention" (Show or Hide?)
-        // We use a simple distance check. If mouse is within 10px of the edge, SHOW.
-        // If mouse is inside the bar (while open), KEEP SHOWING.
+        RECT rcWindow;
+        GetWindowRect(hwnd, &rcWindow);
 
-        bool shouldShow = false;
-        const int TRIGGER_DIST = 4; // Easy hit
-
-        // We also check if the mouse is hovering the CURRENT window rect
-        // (This keeps it open while you use it)
-        bool isHoveringWindow = PtInRect(&rcWindow, pt);
+        const int TRIGGER_ZONE = 10;
+        bool mouseAtEdge = false;
 
         if (config.global.position == "bottom") {
-            bool atEdge = pt.y >= mi.rcMonitor.bottom - TRIGGER_DIST;
-            shouldShow = atEdge || isHoveringWindow;
+            mouseAtEdge = (pt.y >= mi.rcMonitor.bottom - TRIGGER_ZONE);
         }
         else if (config.global.position == "top") {
-            bool atEdge = pt.y <= mi.rcMonitor.top + TRIGGER_DIST;
-            shouldShow = atEdge || isHoveringWindow;
+            mouseAtEdge = (pt.y <= mi.rcMonitor.top + TRIGGER_ZONE);
         }
-        else if (config.global.position == "left") {
-            bool atEdge = pt.x <= mi.rcMonitor.left + TRIGGER_DIST;
-            shouldShow = atEdge || isHoveringWindow;
-        }
-        else if (config.global.position == "right") {
-            bool atEdge = pt.x >= mi.rcMonitor.right - TRIGGER_DIST;
-            shouldShow = atEdge || isHoveringWindow;
-        }
+        bool inZone = PtInRect(&rcWindow, pt);
+        bool shouldShow = mouseAtEdge || inZone;
 
-        // D. Calculate Target
-        int currentW = rcWindow.right - rcWindow.left;
         int currentH = rcWindow.bottom - rcWindow.top;
-        int targetX = rcWindow.left;
+        int targetW = mi.rcMonitor.right - mi.rcMonitor.left;
+        int currentW = rcWindow.right - rcWindow.left;
+        if (currentW != targetW)
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, targetW, currentH, SWP_NOMOVE | SWP_NOACTIVATE);
+
         int targetY = rcWindow.top;
-        const int PEEK = 2; // The 2px sliver
+        int targetX = mi.rcMonitor.left;
+        const int PEEK = 1;
 
         if (config.global.position == "bottom") {
-            int visibleY = mi.rcMonitor.bottom - currentH;
+            int shownY = mi.rcMonitor.bottom - currentH;
             int hiddenY = mi.rcMonitor.bottom - PEEK;
-            targetY = shouldShow ? visibleY : hiddenY;
+            targetY = shouldShow ? shownY : hiddenY;
         }
         else if (config.global.position == "top") {
-            int visibleY = mi.rcMonitor.top;
+            int shownY = mi.rcMonitor.top;
             int hiddenY = mi.rcMonitor.top - currentH + PEEK;
-            targetY = shouldShow ? visibleY : hiddenY;
-        }
-        else if (config.global.position == "left") {
-            int visibleX = mi.rcMonitor.left;
-            int hiddenX = mi.rcMonitor.left - currentW + PEEK;
-            targetX = shouldShow ? visibleX : hiddenX;
-        }
-        else if (config.global.position == "right") {
-            int visibleX = mi.rcMonitor.right - currentW;
-            int hiddenX = mi.rcMonitor.right - PEEK;
-            targetX = shouldShow ? visibleX : hiddenX;
+            targetY = shouldShow ? shownY : hiddenY;
         }
 
-        // E. Apply Movement
-        int currentX = rcWindow.left;
-        int currentY = rcWindow.top;
+        // --- APPLY ---
+        int nextY = rcWindow.top;
 
-        if (currentX != targetX || currentY != targetY) {
-            // Lerp (Smooth Slide)
-            int stepX = (targetX - currentX) / 3; // Fast slide
-            int stepY = (targetY - currentY) / 3;
+        if (rcWindow.top != targetY) {
+            int delta = targetY - rcWindow.top;
+            if (abs(delta) < 2) nextY = targetY;
+            else nextY = rcWindow.top + (int)(delta * 0.3);
 
-            // Snap when close to avoid jitter
-            if (abs(targetX - currentX) < 2) stepX = targetX - currentX;
-            else if (stepX == 0) stepX = (targetX > currentX) ? 1 : -1;
-
-            if (abs(targetY - currentY) < 2) stepY = targetY - currentY;
-            else if (stepY == 0) stepY = (targetY > currentY) ? 1 : -1;
-
-            // [CRITICAL FIX]
-            // 1. HWND_TOPMOST: Forces it above maximized windows
-            // 2. SWP_NOACTIVATE: Prevents stealing focus from games/IDE
-            // 3. Flags: We DO NOT use SWP_ASYNCWINDOWPOS to ensure it happens now.
-
-            SetWindowPos(hwnd, HWND_TOPMOST,
-                currentX + stepX,
-                currentY + stepY,
-                0, 0,
-                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-
-            // Force visual refresh immediately
-            InvalidateRect(hwnd, NULL, FALSE);
-            UpdateWindow(hwnd);
+            SetWindowPos(hwnd, HWND_TOPMOST, targetX, nextY, 0, 0,
+                SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+        else {
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
     }
 }
