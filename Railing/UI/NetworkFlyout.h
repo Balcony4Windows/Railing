@@ -48,8 +48,12 @@ private:
     std::wstring selectedSSID = L"";
     std::wstring connectionStatusMsg = L"";
     std::wstring passwordInput = L"";
-    std::atomic<bool> isBusy{ false };
+    
+    // Threading
     std::thread workerThread;
+    std::atomic<bool> closing{ false };
+    std::atomic<uint64_t> scanToken{ 0 };
+    std::atomic<bool> isBusy{ false };
 
     // Simple Animation State
     UINT_PTR mmTimerId = 0;

@@ -28,6 +28,11 @@ Railing::~Railing() {
     if (!bars.empty() && bars[0]->GetHwnd())
         KillTimer(bars[0]->GetHwnd(), 1);
 
+    if (visualizerBackend) {
+        delete visualizerBackend;
+        visualizerBackend = nullptr;
+    }
+
     for (auto *bar : bars) {
         delete bar;
     }
@@ -95,8 +100,6 @@ bool Railing::Initialize(HINSTANCE hInstance) {
 
     // Start global backends
     stats.GetCpuUsage(); // Prime the pump
-    gpuStats.Initialize();
-    visualizerBackend.Start();
 
     // Register global hooks (apply to all bars)
     titleHook = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE,

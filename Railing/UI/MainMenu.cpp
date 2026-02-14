@@ -6,6 +6,8 @@
 #include <shtypes.h>
 #include <ShObjIdl_core.h>
 
+std::thread MainMenu::configDialogThread;
+
 HMENU MainMenu::CreateTaskbarContextMenu(BarInstance *bar)
 {
     HMENU root = CreatePopupMenu();
@@ -162,7 +164,8 @@ void MainMenu::HandleMenuCmd(HWND hwnd, UINT cmd) {
             break;
         }
         case CMD_CONFIG_LOAD: {
-            std::thread([hwnd, bar]() {
+            if (configDialogThread.joinable()) configDialogThread.join();
+            configDialogThread = std::thread([hwnd, bar]() {
                 HRESULT hrInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
                 IFileOpenDialog *pFileOpen = nullptr;
 
@@ -208,7 +211,7 @@ void MainMenu::HandleMenuCmd(HWND hwnd, UINT cmd) {
                     pFileOpen->Release();
                 }
                 if (SUCCEEDED(hrInit)) CoUninitialize();
-                }).detach();
+                });
             break;
         }
         case CMD_CONFIG_RELOAD:

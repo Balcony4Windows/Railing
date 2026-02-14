@@ -152,6 +152,17 @@ bool BarInstance::Initialize(HINSTANCE hInstance, bool makePrimary) {
         //  otherwise it happens automatically on first hook)
     }
 
+    if (Module::HasType(config, "visualizer")) {
+        if (!Railing::instance->visualizerBackend)
+            Railing::instance->visualizerBackend = new AudioCapture();
+    }
+
+    if (Module::HasType(config, "gpu")) {
+        if (!Railing::instance->gpuStats.IsInitialized()) {
+            Railing::instance->gpuStats.Initialize();
+        }
+    }
+
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(hwnd);
     SetTimer(hwnd, STATS_TIMER_ID, 1000, NULL);

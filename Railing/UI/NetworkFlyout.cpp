@@ -33,6 +33,7 @@ NetworkFlyout::NetworkFlyout(BarInstance *owner, HINSTANCE hInst, ID2D1Factory *
 }
 
 NetworkFlyout::~NetworkFlyout() {
+    closing.store(true, std::memory_order_release);
     FlyoutManager::Get().Unregister(this);
     if (workerThread.joinable()) workerThread.join();
     if (hwnd) { DestroyWindow(hwnd); hwnd = nullptr; }
@@ -220,16 +221,25 @@ LRESULT CALLBACK NetworkFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, 
 }
 
 void NetworkFlyout::ScanAsync() {
-    if (isBusy) return;
-    std::thread([this]() {
+    if (isBusy.load(std::memory_order_acquire)) return;
+    uint64_t myToken = ++scanToken;
+    if (workerThread.joinable()) workerThread.join();
+
+    workerThread = std::thread([this, myToken]() {
         isBusy = true;
         backend.RequestScan();
         Sleep(100);
         auto nets = backend.ScanNetworks();
-        this->cachedNetworks = nets;
-        isBusy = false;
-        InvalidateRect(this->hwnd, NULL, FALSE);
-        }).detach();
+        
+        if (closing.load(std::memory_order_acquire) || myToken != scanToken.load(std::memory_order_acquire)) {
+            isBusy.store(false, std::memory_order_release);
+            return;
+        }
+        cachedNetworks = std::move(nets);
+        isBusy.store(false, std::memory_order_release);
+
+        if (hwnd && IsWindow(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+    });
 }
 
 void NetworkFlyout::ConnectAsync(WifiNetwork net, std::wstring password) {
@@ -246,8 +256,13 @@ void NetworkFlyout::ConnectAsync(WifiNetwork net, std::wstring password) {
         Sleep(500);
         this->cachedNetworks = backend.ScanNetworks();
         isBusy = false;
-        InvalidateRect(this->hwnd, NULL, FALSE);
-        });
+        if (closing.load(std::memory_order_acquire)) {
+            isBusy.store(false, std::memory_order_release);
+            return;
+        }
+
+        if (hwnd && IsWindow(hwnd)) InvalidateRect(this->hwnd, NULL, FALSE);
+    });
 }
 
 void NetworkFlyout::Draw() {

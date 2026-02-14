@@ -42,7 +42,7 @@ public:
     // Global resources
     SystemStats stats;
     GpuStats gpuStats;
-    AudioCapture visualizerBackend;
+    AudioCapture *visualizerBackend;
     NetworkBackend networkBackend;
 
     // Cached global stats

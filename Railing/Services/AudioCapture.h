@@ -59,7 +59,6 @@ private:
         hr = pAudioClient->GetMixFormat(&pwfx);
         if (FAILED(hr)) goto Exit;
 
-        // Force Loopback
         hr = pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 0, 0, pwfx, NULL);
         if (FAILED(hr)) goto Exit;
 
@@ -86,7 +85,6 @@ private:
                     tempBuf.resize(FFT_SIZE, 0.0f);
 
                     // --- FORMAT DETECTION & NORMALIZATION ---
-                    // This ensures data is ALWAYS between -1.0 and 1.0
                     int channels = pwfx->nChannels;
                     int bitsPerSample = pwfx->wBitsPerSample;
                     int bytesPerFrame = pwfx->nBlockAlign;
@@ -96,29 +94,25 @@ private:
                         BYTE *framePtr = pData + (i * bytesPerFrame);
 
                         if (bitsPerSample == 32) {
-                            // 32-bit Float (Most common)
                             float *pFloat = (float *)framePtr;
                             // Downmix stereo to mono
                             if (channels >= 2) sample = (pFloat[0] + pFloat[1]) * 0.5f;
                             else sample = pFloat[0];
                         }
-                        else if (bitsPerSample == 16) {
-                            // 16-bit Integer (Scale down from 32768)
+                        else if (bitsPerSample == 16) { // 16-bit Integer (Scale down from 32768)
                             short *pShort = (short *)framePtr;
                             if (channels >= 2) sample = ((float)pShort[0] + (float)pShort[1]) * 0.5f;
                             else sample = (float)pShort[0];
 
                             sample /= 32768.0f; // Normalize!
                         }
-                        else if (bitsPerSample == 24) {
-                            // 24-bit Integer (Scale down from 8.3 million)
+                        else if (bitsPerSample == 24) { // 24-bit Integer (Scale down from 8.3 million)
                             int32_t val = (framePtr[2] << 24) | (framePtr[1] << 16) | (framePtr[0] << 8);
                             sample = (float)(val >> 8) / 8388608.0f; // Normalize!
                         }
 
                         tempBuf[i] = sample;
                     }
-                    // ---------------------------------------
 
                     {
                         std::lock_guard<std::mutex> lock(dataMutex);

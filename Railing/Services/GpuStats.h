@@ -14,7 +14,10 @@ public:
         if (dxAdapter) dxAdapter->Release();
     }
 
+    bool IsInitialized() { return initialized; }
+
     void Initialize() {
+        initialized = true;
         if (dxAdapter) return; // Prevent double init
 
         IDXCoreAdapterFactory *dxFactory = nullptr;
@@ -73,4 +76,5 @@ public:
 
 private:
     IDXCoreAdapter *dxAdapter = nullptr;
+    bool initialized = false;
 };

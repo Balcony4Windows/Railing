@@ -6,6 +6,7 @@
 class MainMenu
 {
 public:
+	static std::thread configDialogThread;
 	enum MenuCommand : UINT {
 		CMD_LAYOUT_TOP = 1000,
 		CMD_LAYOUT_BOTTOM,

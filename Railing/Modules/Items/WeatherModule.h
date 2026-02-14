@@ -136,11 +136,13 @@ public:
                     Sleep(100);
                 }
             }
-            });
-        worker.detach();
+        });
     }
 
-    ~WeatherModule() { stopThread = true; }
+    ~WeatherModule() {
+        stopThread = true;
+        if (worker.joinable()) worker.join();
+    }
 
     float GetContentWidth(RenderContext &ctx) override {
         if (needsUpdate) {

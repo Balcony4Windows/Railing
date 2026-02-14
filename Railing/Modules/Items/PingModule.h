@@ -22,23 +22,30 @@ class NetworkPoller
 public:
 	static std::vector<NetTask> tasks;
 	static std::mutex taskMutex;
-	static bool isRunning;
+	static std::atomic<bool> isRunning;
+	static std::atomic<bool> stopRequested;
+	static std::thread worker;
+
 	static void AddTask(void *owner, std::string ip, std::atomic<int> *store, int interval) {
-		tasks.push_back({ owner, ip, store, interval, 0 });
-		if (!isRunning) Start();
+		{
+			std::lock_guard<std::mutex> lock(taskMutex);
+			tasks.push_back({ owner, ip, store, interval, 0 });
+		}
+		if (!isRunning.load()) Start();
 	}
 	static void RemoveTask(void *owner) {
 		std::lock_guard<std::mutex> lock(taskMutex);
 		tasks.erase(std::remove_if(tasks.begin(), tasks.end(),
 			[owner](const NetTask &t) { return t.ownerId == owner; }),
 			tasks.end());
+		if (tasks.empty()) Stop();
 	}
 private:
 	static void Start() {
 		if (isRunning) return;
 		isRunning = true;
 
-		std::thread([]() {
+		worker = std::thread([]() {
 			SetThreadDescription(GetCurrentThread(), L"Railing_PingWorker");
 
 			HANDLE hIcmp = IcmpCreateFile();
@@ -48,7 +55,7 @@ private:
 			DWORD ReplySize = sizeof(ICMP_ECHO_REPLY) + sizeof(SendData);
 			LPVOID ReplyBuffer = malloc(ReplySize);
 
-			while (isRunning) {
+			while (!stopRequested.load()) {
 				ULONGLONG now = GetTickCount64();
 
 				std::vector<NetTask> localTasks;
@@ -86,13 +93,27 @@ private:
 			}
 			if (ReplyBuffer) free(ReplyBuffer);
 			IcmpCloseHandle(hIcmp);
-			}).detach();
+			});
+	}
+
+	static void Stop() {
+		if (!isRunning.load())
+			return;
+
+		stopRequested.store(true);
+
+		if (worker.joinable())
+			worker.join();
+
+		isRunning.store(false);
 	}
 };
 
 inline std::vector<NetTask> NetworkPoller::tasks;
 inline std::mutex NetworkPoller::taskMutex;
-inline bool NetworkPoller::isRunning = false;
+inline std::atomic<bool> NetworkPoller::isRunning = false;
+inline std::atomic<bool> NetworkPoller::stopRequested = false;
+inline std::thread NetworkPoller::worker;
 
 class PingModule : public Module {
 	int lastRenderedPing = -999;
@@ -108,7 +129,9 @@ public:
 		NetworkPoller::AddTask(this, targetIP, &lastPing, interval);
 	}
 
-	~PingModule() { NetworkPoller::RemoveTask(this); }
+	~PingModule() { 
+		NetworkPoller::RemoveTask(this);
+	}
 
 	float GetContentWidth(RenderContext &ctx) override {
 		int currentPing = lastPing;
