@@ -4,9 +4,11 @@
 #include <dwrite.h>
 #include <vector>
 #include <string>
+#include <mmsystem.h>
 #include "AudioBackend.h"
 #include "ThemeTypes.h"
 #include "IFlyout.h"
+#pragma comment(lib, "winmm.lib")
 
 class BarInstance;
 
@@ -21,15 +23,16 @@ public:
     VolumeFlyout(
         BarInstance *owner, HINSTANCE hInst,
         ID2D1Factory *pSharedFactory, IDWriteFactory *pSharedWriteFactory,
-        IDWriteTextFormat *pFormat, const ThemeConfig &config); 
+        IDWriteTextFormat *pFormat, const ThemeConfig &config);
     ~VolumeFlyout();
+    void CreateDeviceResources();
     AudioBackend audio;
     HWND hwnd = nullptr;
-	BarInstance *ownerBar;
+    BarInstance *ownerBar;
 
     void Toggle(RECT iconRect); // Open/Close
     void Hide() override;
-    enum class AnimationState { Hidden, Entering, Visible, Exiting };
+    enum class AnimationState { Hidden, Visible };
     AnimationState animState = AnimationState::Hidden;
     bool IsVisible() override {
         return (hwnd && IsWindowVisible(hwnd));
@@ -40,7 +43,7 @@ private:
     void Draw();
     void OnClick(int x, int y);
     void OnDrag(int x, int y);
-	void PositionWindow(RECT iconRect);
+    void PositionWindow(RECT iconRect);
     void RefreshDevices();
 
     std::vector<AudioDeviceInfo> devices;
@@ -55,6 +58,8 @@ private:
     ID2D1SolidColorBrush *pAccentBrush = nullptr;
     ID2D1SolidColorBrush *pBorderBrush = nullptr;
     IDWriteTextFormat *pTextFormat = nullptr;
+    IDWriteTextLayout *pVolumeTextLayout = nullptr;
+    int lastVolumePercent = -1;
 
     ThemeConfig::Global style;
     HINSTANCE hInst;
@@ -70,8 +75,8 @@ private:
     // Animation
     int targetX = 0;
     int targetY = 0;
-    float currentAlpha = 0.0f;
-    float currentOffset = 10.0f;
+    UINT_PTR mmTimerId = 0;
+    float fadeAlpha = 0.0f;
 
     float scrollOffset = 0.0f;
     bool isDraggingScrollbar = false;
@@ -81,9 +86,7 @@ private:
     D2D1_RECT_F scrollThumbRect = { 0 };
     float maxScroll = 0.0f;
 
-    static ULONGLONG lastAnimTime;
-    static ULONGLONG lastAutoCloseTime;
-    void UpdateAnimation();
+    ULONGLONG lastAutoCloseTime;
 
     D2D1_RECT_F sliderRect = {};
     D2D1_RECT_F switchRect = {};

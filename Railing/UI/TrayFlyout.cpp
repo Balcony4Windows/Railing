@@ -11,6 +11,27 @@
 
 #define WM_TRAY_REFRESH (WM_USER + 102)
 
+static HHOOK g_mouseHook = NULL;
+static TrayFlyout *g_hookFlyout = NULL;
+
+static LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && g_hookFlyout) { // COMMON SYSTRAY STUCK FIX!
+        if (wParam == WM_LBUTTONDOWN || wParam == WM_RBUTTONDOWN || wParam == WM_MBUTTONDOWN) {
+            POINT pt = ((MSLLHOOKSTRUCT *)lParam)->pt;
+            RECT rc;
+            GetWindowRect(g_hookFlyout->hwnd, &rc);
+
+            if (!PtInRect(&rc, pt)) {
+                g_hookFlyout->Hide();
+                UnhookWindowsHookEx(g_mouseHook);
+                g_mouseHook = NULL;
+                g_hookFlyout = NULL;
+            }
+        }
+    }
+    return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+}
+
 ID2D1Bitmap *CreateBitmapFromIcon(ID2D1RenderTarget *rt, IWICImagingFactory *pWIC, HICON hIcon) {
     if (!hIcon || !rt || !pWIC) return nullptr;
 
@@ -63,15 +84,7 @@ TrayFlyout::TrayFlyout(BarInstance *owner, HINSTANCE hInst, ID2D1Factory *shared
         nullptr, nullptr, hInst, this
     );
 
-    if (style.blur) RailingRenderer::EnableBlur(hwnd, 0x00000000);
-    else {
-        MARGINS margins = { -1 };
-        DwmExtendFrameIntoClientArea(hwnd, &margins);
-    }
-    DWM_WINDOW_CORNER_PREFERENCE preference = (style.radius > 0.0f) ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
-    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
-
-    SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+    SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA);
     if (TrayBackend::MultipleTrays) SetTimer(hwnd, 1, 1000, NULL);
 
     TrayBackend::Get().SetIconChangeCallback([this]() {
@@ -81,6 +94,11 @@ TrayFlyout::TrayFlyout(BarInstance *owner, HINSTANCE hInst, ID2D1Factory *shared
 
 TrayFlyout::~TrayFlyout() {
 	FlyoutManager::Get().Unregister(this);
+    if (mmTimerId) {
+        timeKillEvent(mmTimerId);
+        mmTimerId = 0;
+    }
+
     if (pRenderTarget) pRenderTarget->Release();
     if (pBgBrush) pBgBrush->Release();
     if (pHoverBrush) pHoverBrush->Release();
@@ -94,14 +112,17 @@ TrayFlyout::~TrayFlyout() {
 void TrayFlyout::Toggle(RECT iconRect) {
     ULONGLONG now = GetTickCount64();
     if (now - lastAutoCloseTime < 200) return;
-    if (IsVisible()) Hide();
+
+    if (IsVisible()) {
+        Hide();
+    }
     else {
         FlyoutManager::Get().CloseOthers(this);
         currentIcons = TrayBackend::Get().GetIcons();
         UpdateLayout();
 
-		for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-		cachedBitmaps.clear();
+        for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
+        cachedBitmaps.clear();
 
         if (currentIcons.size() <= 5) layoutCols = max(1, (int)currentIcons.size());
         else if (currentIcons.size() <= 9) layoutCols = 3;
@@ -130,87 +151,68 @@ void TrayFlyout::Toggle(RECT iconRect) {
         targetY = iconRect.top - height - gap;
         if (targetY < mi.rcWork.top) targetY = iconRect.bottom + gap;
 
-        animState = AnimationState::Entering;
-        currentAlpha = 0.0f;
-        currentOffset = 20.0f;
-        lastAnimTime = now;
+        animState = AnimationState::Visible;
 
         int r = (int)style.radius;
         HRGN hRgn = (r > 0) ? CreateRoundRectRgn(0, 0, width + 1, height + 1, r * 2, r * 2) : CreateRectRgn(0, 0, width, height);
         SetWindowRgn(hwnd, hRgn, TRUE);
 
-        if (!style.animation.enabled) {
-            animState = AnimationState::Visible;
-            currentAlpha = 1.0f;
-            currentOffset = 0.0f;
+        static bool dwmSetupDone = false;
+        if (!dwmSetupDone) {
+            dwmSetupDone = true;
+
+            if (style.blur) RailingRenderer::EnableBlur(hwnd, 0x00000000);
+            else {
+                MARGINS margins = { -1 };
+                DwmExtendFrameIntoClientArea(hwnd, &margins);
+            }
+
+            DWM_WINDOW_CORNER_PREFERENCE preference = (style.radius > 0.0f) ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
         }
 
-        SetWindowPos(hwnd, HWND_TOPMOST, targetX, targetY + (int)currentOffset, width, height, SWP_SHOWWINDOW | SWP_NOACTIVATE);
-        SetForegroundWindow(hwnd);
+        SetWindowPos(hwnd, HWND_TOPMOST, targetX, targetY, width, height, SWP_NOACTIVATE);
+        fadeAlpha = 0.08f;
+        SetLayeredWindowAttributes(hwnd, 0, (BYTE)(fadeAlpha * 255.0f), LWA_ALPHA);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        mmTimerId = timeSetEvent(10, 1, [](UINT, UINT, DWORD_PTR dwUser, DWORD_PTR, DWORD_PTR) {
+            TrayFlyout *self = (TrayFlyout *)dwUser;
+            self->fadeAlpha += 0.08f;
+            if (self->fadeAlpha >= 1.0f) {
+                self->fadeAlpha = 1.0f;
+                if (self->mmTimerId) {
+                    timeKillEvent(self->mmTimerId);
+                    self->mmTimerId = 0;
+                }
+            }
+            SetLayeredWindowAttributes(self->hwnd, 0, (BYTE)(self->fadeAlpha * 255.0f), LWA_ALPHA);
+            InvalidateRect(self->hwnd, NULL, FALSE);
+            }, (DWORD_PTR)this, TIME_PERIODIC | TIME_KILL_SYNCHRONOUS);
+
         InvalidateRect(hwnd, NULL, FALSE);
+        SetForegroundWindow(hwnd);
+
     }
 }
+
 void TrayFlyout::Hide()
 {
-    if (animState == AnimationState::Hidden || animState == AnimationState::Exiting) return;
-	ULONGLONG now = GetTickCount64();
-    if (style.animation.enabled) {
-        animState = AnimationState::Exiting;
-        lastAnimTime = now;
-		InvalidateRect(hwnd, NULL, FALSE);
-    }
-    else {
-        animState = AnimationState::Hidden;
-		ShowWindow(hwnd, SW_HIDE);
-        for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-		cachedBitmaps.clear();
-    }
-}
+    if (animState == AnimationState::Hidden) return;
 
-void TrayFlyout::UpdateAnimation() {
-    if (!style.animation.enabled || animState == AnimationState::Visible || animState == AnimationState::Hidden) return;
+    if (mmTimerId) {
+        timeKillEvent(mmTimerId);
+        mmTimerId = 0;
+    }
 
     ULONGLONG now = GetTickCount64();
-    float deltaTime = (float)(now - lastAnimTime) / 1000.0f;
-    if (deltaTime == 0.0f) deltaTime = 0.016f;
-    lastAnimTime = now;
+    lastAutoCloseTime = now;
 
-    float animSpeed = 8.0f;
-    bool needsMove = false;
+    animState = AnimationState::Hidden;
+    ShowWindow(hwnd, SW_HIDE);
+    fadeAlpha = 0.0f;
 
-    if (animState == AnimationState::Entering) {
-        currentAlpha += deltaTime * animSpeed;
-        if (currentAlpha >= 1.0f) {
-            currentAlpha = 1.0f;
-            animState = AnimationState::Visible;
-        }
-        currentOffset = (1.0f - currentAlpha) * 20.0f;
-        if (animState != AnimationState::Visible) InvalidateRect(hwnd, NULL, FALSE);
-        needsMove = true;
-    }
-    else if (animState == AnimationState::Exiting) {
-        currentAlpha -= deltaTime * animSpeed;
-        if (currentAlpha <= 0.0f) {
-            currentAlpha = 0.0f;
-            animState = AnimationState::Hidden;
-            ShowWindow(hwnd, SW_HIDE);
-
-            for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
-            cachedBitmaps.clear();
-        }
-        currentOffset = (1.0f - currentAlpha) * 20.0f;
-        if (animState != AnimationState::Hidden) InvalidateRect(hwnd, NULL, FALSE);
-        needsMove = true;
-    }
-
-    if (needsMove && animState != AnimationState::Hidden) {
-        SetWindowPos(hwnd, NULL,
-            targetX,
-            targetY + (int)currentOffset,
-            0, 0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
-        );
-    }
+    for (auto *bmp : cachedBitmaps) if (bmp) bmp->Release();
+    cachedBitmaps.clear();
 }
 
 void TrayFlyout::UpdateLayout() {
@@ -284,25 +286,12 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
         if (LOWORD(wParam) == WA_INACTIVE && self && self->animState != AnimationState::Hidden) {
             ULONGLONG now = GetTickCount64();
             if (now - self->lastAutoCloseTime < 200) return 0;
-            if (self->ignoreNextDeactivate) { // Inside an icon
+
+            if (self->ignoreNextDeactivate) {
                 self->ignoreNextDeactivate = false;
                 return 0;
             }
-            if (self->animState != AnimationState::Exiting) {
-                self->lastAutoCloseTime = now;
-
-                if (self->style.animation.enabled) {
-                    self->animState = AnimationState::Exiting;
-                    self->lastAnimTime = now;
-                    InvalidateRect(hwnd, NULL, FALSE);
-                }
-                else {
-                    self->animState = AnimationState::Hidden;
-                    ShowWindow(hwnd, SW_HIDE);
-                    for (auto *bmp : self->cachedBitmaps) if (bmp) bmp->Release();
-                    self->cachedBitmaps.clear();
-                }
-            }
+            self->Hide();
         }
         return 0;
     case WM_NCHITTEST: {
@@ -314,16 +303,16 @@ LRESULT CALLBACK TrayFlyout::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPA
         if (self && self->animState == AnimationState::Visible) {
             self->currentIcons = TrayBackend::Get().GetIcons();
 
-			for (auto *bmp : self->cachedBitmaps) if (bmp) bmp->Release();
-			self->cachedBitmaps.clear();
+            for (auto *bmp : self->cachedBitmaps) if (bmp) bmp->Release();
+            self->cachedBitmaps.clear();
 
             self->UpdateLayout();
             self->UpdateBitmapCache();
-            InvalidateRect(hwnd, NULL , FALSE);
+            InvalidateRect(hwnd, NULL, FALSE);
         }
         return 0;
     case WM_TIMER:
-		if (wParam == 1) { // Tray host timer when multiple trays exist
+        if (wParam == 1) {  // Tray icon refresh timer (1000ms)
             TrayBackend::Get().NotifyIconsChanged();
         }
         return 0;
@@ -405,7 +394,6 @@ void TrayFlyout::UpdateBitmapCache() {
 }
 
 void TrayFlyout::Draw() {
-    UpdateAnimation();
     if (animState == AnimationState::Hidden) return;
 
     RECT rc; GetClientRect(hwnd, &rc);
@@ -439,11 +427,11 @@ void TrayFlyout::Draw() {
     if (pBgBrush && pHoverBrush && pBorderBrush) {
         D2D1_COLOR_F bgColor = style.background;
         if (bgColor.a > 0.6f) bgColor.a = 0.6f;
-        bgColor.a *= currentAlpha;
-        if (bgColor.a <= 0.001f) bgColor = D2D1::ColorF(0.08f, 0.08f, 0.1f, 0.6f * currentAlpha);
+        bgColor.a *= fadeAlpha;
+        if (bgColor.a <= 0.001f) bgColor = D2D1::ColorF(0.08f, 0.08f, 0.1f, 0.6f * fadeAlpha);
         
         pBgBrush->SetColor(bgColor);
-        pHoverBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f * currentAlpha));
+        pHoverBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f * fadeAlpha));
 
         D2D1_RECT_F bg = D2D1::RectF(0, 0, (float)rc.right, (float)rc.bottom);
         float r = style.radius;
@@ -451,7 +439,7 @@ void TrayFlyout::Draw() {
 
         if (style.borderWidth > 0.0f && style.borderColor.a > 0.0f) {
             D2D1_COLOR_F bColor = style.borderColor;
-            bColor.a *= currentAlpha; // Fade with window
+            bColor.a *= fadeAlpha; // Fade with window
             pBorderBrush->SetColor(bColor);
 
             float inset = style.borderWidth / 2.0f;
@@ -479,10 +467,10 @@ void TrayFlyout::Draw() {
 
             // Icon
             if (i < cachedBitmaps.size() && cachedBitmaps[i]) {
-                pRenderTarget->DrawBitmap(cachedBitmaps[i], iconDest, currentAlpha);
+                pRenderTarget->DrawBitmap(cachedBitmaps[i], iconDest, fadeAlpha);
             }
             else {
-                pBgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f * currentAlpha));
+                pBgBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f * fadeAlpha));
                 pRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(iconDest, 2, 2), pBgBrush);
             }
 
@@ -500,6 +488,8 @@ void TrayFlyout::OnClick(int x, int y, bool isRightClick) {
 
             if (isRightClick) {
                 ignoreNextDeactivate = true;
+                g_hookFlyout = this;
+                g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseProc, NULL, 0);
                 TrayBackend::Get().SendRightClick(icon);
             }
             else {

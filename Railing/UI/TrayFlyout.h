@@ -3,10 +3,12 @@
 #include <d2d1.h>
 #include <vector>
 #include <wincodec.h>
+#include <mmsystem.h>
 #include "ThemeTypes.h"
 #include "TooltipHandler.h"
 #include "TrayBackend.h"
 #include "IFlyout.h"
+#pragma comment(lib, "winmm.lib")
 
 class BarInstance;
 
@@ -21,7 +23,7 @@ public:
     void Toggle(RECT iconRect);
     void Hide() override;
     void Draw();
-    bool IsVisible() override { return (animState != AnimationState::Hidden); }
+    bool IsVisible() override { return IsWindowVisible(hwnd); }
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
@@ -48,12 +50,10 @@ private:
     int layoutCols = 5;
 
     // Animation support
-    void UpdateAnimation();
-    enum class AnimationState { Hidden, Entering, Visible, Exiting };
+    enum class AnimationState { Hidden, Visible };
     AnimationState animState = AnimationState::Hidden;
-    float currentAlpha = 0.0f;
-    float currentOffset = 0.0f;
-    ULONGLONG lastAnimTime = 0;
+    UINT_PTR mmTimerId = 0;
+    float fadeAlpha = 0.0f;
     ULONGLONG lastAutoCloseTime = 0; // Debounce
     int targetX = 0, targetY = 0;
 
@@ -66,6 +66,4 @@ private:
 
     std::vector<TrayIconData> currentIcons;
     std::vector<ID2D1Bitmap *> cachedBitmaps;
-
-    int hoverIndex = -1;
 };

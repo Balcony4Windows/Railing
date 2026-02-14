@@ -320,7 +320,8 @@ public:
             // wParam:  Icon ID
             // lParam:  Message ID (or Mouse Coordinates in rare ancient cases)
             wParam = icon.uID;
-            lParam = message;
+            if (message == WM_CONTEXTMENU) lParam = MAKELPARAM(pt.x, pt.y);
+            else lParam = message;
         }
 
         if (forceFocus) {

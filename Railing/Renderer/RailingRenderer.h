@@ -1,9 +1,12 @@
 #pragma once
 #include <windows.h>
-#include <d2d1.h>
+#include <d3d11_1.h>
+#include <d2d1_1.h>
 #include <dwrite_3.h>
+#include <dcomp.h>
 #include <wincodec.h>
 #include <vector>
+#include <wrl/client.h>
 
 #include "ThemeTypes.h"
 #include "Module.h"
@@ -32,6 +35,12 @@ public:
     void Reload(const char *name = "config.json");
     void Draw(const std::vector<WindowInfo> &windows, const std::vector<std::wstring> &pinnedApps, HWND activeWindow);
     void Resize();
+
+    void CreateDeviceResources();
+    ID2D1Factory *GetFactory() const;
+    IWICImagingFactory *GetWICFactory() const;
+    IDWriteFactory *GetWriteFactory() const;
+
     static void EnableBlur(HWND hwnd, DWORD nColor);
     void UpdateBlurRegion();
     bool HitTest(POINT pt);
@@ -41,18 +50,16 @@ public:
 
     WorkspaceManager *pWorkspaceManager;
 
-    ID2D1Factory *GetFactory() const { return pFactory; }
-    IWICImagingFactory *GetWICFactory() const { return pWICFactory; }
-    IDWriteFactory *GetWriteFactory() const { return pWriteFactory; }
     IDWriteTextFormat *GetTextFormat() const { return pTextFormat; }
     IDWriteTextFormat *GetIconFormat() const { return pIconFormat; }
     void UpdateStats(const SystemStatusData &data) { currentStats = data; }
 private:
     HWND hwnd;
 
-    ID2D1Factory *pFactory = nullptr;
-    ID2D1HwndRenderTarget *pRenderTarget = nullptr;
-    IDWriteFactory *pWriteFactory = nullptr;
+    Microsoft::WRL::ComPtr<IDXGISwapChain1> m_swapChain;
+	Microsoft::WRL::ComPtr<ID2D1DeviceContext> m_d2dContext;
+    Microsoft::WRL::ComPtr<IDCompositionTarget> m_dcompTarget;
+    Microsoft::WRL::ComPtr<IDCompositionVisual> m_dcompVisual;
     IDWriteTextFormat *pTextFormatBold = nullptr;
     IDWriteTextFormat *pTextFormat = nullptr;
     IDWriteTextFormat *pEmojiFormat = nullptr;
@@ -61,7 +68,6 @@ private:
     IDWriteInlineObject *pEllipsis = nullptr;
     ID2D1SolidColorBrush *pBgBrush = nullptr;
     ID2D1SolidColorBrush *pBorderBrush = nullptr;
-    IWICImagingFactory *pWICFactory = nullptr;
 
     ID2D1Bitmap *pAppIcon = nullptr;
     RECT iconClickRect = {};

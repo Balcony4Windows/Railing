@@ -412,7 +412,10 @@ LRESULT CALLBACK BarInstance::BarWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
         if (self->inputManager) self->inputManager->OnMouseLeave(hwnd);
         return 0;
     case WM_HOTKEY: {
-        if (wParam == 900) PostQuitMessage(0);
+        if (wParam == 900) {
+            PostQuitMessage(0);
+            DestroyWindow(hwnd);
+        }
         break;
     }
     case WM_TIMER:
@@ -486,7 +489,6 @@ bool IsFullscreenWindowActive() {
 void BarInstance::OnTimerTick() {
     tickCount++;
 
-    // --- 1. STATS UPDATE ---
     if (tickCount % 60 == 0) {
         if (Railing::instance) {
             Railing::instance->UpdateGlobalStats();

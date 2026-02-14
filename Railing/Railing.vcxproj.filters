@@ -177,8 +177,7 @@
       <Filter>App</Filter>
     </ClInclude>
     <ClInclude Include="App\AppBarManager.h" />
-    <ClInclude Include="GraphicsDevice.h" />
-    <ClInclude Include="GraphicsHub.h" />
+    <ClInclude Include="Renderer\GraphicsHub.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Railing.rc">
@@ -234,7 +233,6 @@
     <ClCompile Include="UI\MainMenu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="GraphicsDevice.cpp" />
-    <ClCompile Include="GraphicsHub.cpp" />
+    <ClCompile Include="Renderer\GraphicsHub.cpp" />
   </ItemGroup>
 </Project>

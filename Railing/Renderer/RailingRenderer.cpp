@@ -6,6 +6,7 @@
 #include <dwmapi.h>
 #include "Types.h"
 #include <wincodec.h>
+#include <GraphicsHub.h>
 #pragma comment(lib, "d2d1")
 #pragma comment(lib, "dwrite")
 #pragma comment(lib, "windowscodecs.lib")
@@ -18,12 +19,15 @@
 
 RailingRenderer::RailingRenderer(HWND hwnd, const ThemeConfig &config) : hwnd(hwnd), theme(config)
 {
+    GraphicsHub::Get().Initialize();
+
     char debugBuf[256];
     sprintf_s(debugBuf, "DEBUG: Loaded Config. Layout sizes: L=%d, C=%d, R=%d\n",
         (int)theme.layout.left.size(),
         (int)theme.layout.center.size(),
         (int)theme.layout.right.size());
     OutputDebugStringA(debugBuf);
+
     if (theme.global.blur && theme.global.background.a < 1.0f) {
         EnableBlur(hwnd, D2D1ColorFToBlurColor(theme.global.background));
         DWM_WINDOW_CORNER_PREFERENCE preference = (theme.global.radius > 0.0f) ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
@@ -33,11 +37,10 @@ RailingRenderer::RailingRenderer(HWND hwnd, const ThemeConfig &config) : hwnd(hw
         MARGINS margins = { -1 };
         DwmExtendFrameIntoClientArea(hwnd, &margins);
     }
-    D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), reinterpret_cast<void **>(&pFactory));
-    DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown **>(&pWriteFactory));
+    auto writeFac = GraphicsHub::Get().writeFactory;
 
     std::wstring fontName(theme.global.font.begin(), theme.global.font.end());
-    pWriteFactory->CreateTextFormat(
+    writeFac->CreateTextFormat(
         fontName.c_str(), NULL,
         DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL,
@@ -48,39 +51,26 @@ RailingRenderer::RailingRenderer(HWND hwnd, const ThemeConfig &config) : hwnd(hw
     pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
-    pWriteFactory->CreateTextFormat(
+    writeFac->CreateTextFormat(
         L"Segoe MDL2 Assets", NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         theme.global.fontSize + 2.0f, L"en-us", &pIconFormat);
     pIconFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     pIconFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
-    pWriteFactory->CreateTextFormat(
+    writeFac->CreateTextFormat(
         L"Segoe UI Emoji", NULL,
         DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
         16.0f, L"en-us", &pEmojiFormat);
     pEmojiFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     pEmojiFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
-    pWriteFactory->CreateTextFormat(
+    writeFac->CreateTextFormat(
         L"Segoe UI", NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL, 14.0f, L"en-us", &pTextFormatBold);
     pTextFormatBold->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     pTextFormatBold->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
-    RECT rc; GetClientRect(hwnd, &rc);
-    D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
-        D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
-        0, 0, D2D1_RENDER_TARGET_USAGE_NONE, D2D1_FEATURE_LEVEL_DEFAULT);
-    D2D1_HWND_RENDER_TARGET_PROPERTIES hwndProps = D2D1::HwndRenderTargetProperties(hwnd, D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top));
-    pFactory->CreateHwndRenderTarget(props, hwndProps, &pRenderTarget);
-
-    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pTextBrush);
-    pRenderTarget->CreateSolidColorBrush(theme.global.background, &pBgBrush);
-    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0), &pBorderBrush); // Temp
-
-    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pWICFactory));
-    if (FAILED(hr)) return;
-    LoadAppIcon();
+    CreateDeviceResources();
     LoadAppIcon();
 
     // Build module list
@@ -105,16 +95,13 @@ RailingRenderer::~RailingRenderer()
     for (Module *m : centerModules) delete m;
     for (Module *m : rightModules) delete m;
 
-    if (pWICFactory) pWICFactory->Release();
     if (pTextBrush) pTextBrush->Release();
     if (pBgBrush) pBgBrush->Release();
     if (pBorderBrush) pBorderBrush->Release();
     if (pTextFormat) pTextFormat->Release();
     if (pIconFormat) pIconFormat->Release();
     if (pEmojiFormat) pEmojiFormat->Release();
-    if (pRenderTarget) pRenderTarget->Release();
-    if (pFactory) pFactory->Release();
-    if (pWriteFactory) pWriteFactory->Release();
+    if (pAppIcon) pAppIcon->Release();
 }
 
 void RailingRenderer::SetScreenPosition(std::string newPos)
@@ -169,17 +156,17 @@ void RailingRenderer::Reload(const char *name)
 
 void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::vector<std::wstring> &pinnedApps, HWND activeWindow)
 {
-    if (!pRenderTarget) return;
+    if (!m_d2dContext) CreateDeviceResources();
+	if (!m_d2dContext) return;
 
     for (Module *m : leftModules) m->Update();
     for (Module *m : centerModules) m->Update();
     for (Module *m : rightModules) m->Update();
 
-    pRenderTarget->BeginDraw();
-    pRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
-    pRenderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-    RenderContext ctx;
+    m_d2dContext->BeginDraw();
+    m_d2dContext->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
+    RenderContext ctx;
     ctx.dpi = GetDpiForWindow(hwnd);
     float scale = (float)ctx.dpi / 96.0f;
     RECT rc; GetClientRect(hwnd, &rc);
@@ -211,14 +198,14 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
         D2D1::Size(scaleX, scaleY),
         D2D1::Point2F(currentW / 2.0f, currentH / 2.0f)
     );
-    pRenderTarget->SetTransform(transform);
+    m_d2dContext->SetTransform(transform);
     ctx.logicalWidth = targetW / scale;
     ctx.logicalHeight = targetH / scale;
 
-    ctx.rt = pRenderTarget;
-    ctx.writeFactory = pWriteFactory;
+    ctx.rt = m_d2dContext.Get();
+    ctx.writeFactory = GraphicsHub::Get().writeFactory.Get();
     ctx.workspaces = pWorkspaceManager;
-    ctx.wicFactory = pWICFactory;
+    ctx.wicFactory = GraphicsHub::Get().wicFactory.Get();;
     ctx.windows = &windows;
     ctx.pinnedApps = (std::vector<std::wstring> *) & pinnedApps;
     ctx.foregroundWindow = activeWindow;
@@ -228,7 +215,7 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     ctx.emojiFormat = pEmojiFormat;
     ctx.textBrush = pTextBrush;
     ctx.bgBrush = pBgBrush;
-    ctx.factory = pFactory;
+    ctx.factory = GraphicsHub::Get().d2dFactory.Get();;
     ctx.borderBrush = pBorderBrush;
     ctx.cpuUsage = currentStats.cpuUsage;
     ctx.gpuTemp = currentStats.gpuTemp;
@@ -238,7 +225,7 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
     ctx.wifiSignal = currentStats.wifiSignal;
     ctx.isWifiConnected = currentStats.isWifiConnected;
     ctx.appIcon = pAppIcon;
-    pRenderTarget->SetDpi((float)ctx.dpi, (float)ctx.dpi);
+    m_d2dContext->SetDpi((float)ctx.dpi, (float)ctx.dpi);
     ctx.scale = ctx.dpi / 96.0f;
     ctx.hwnd = hwnd;
 
@@ -401,18 +388,131 @@ void RailingRenderer::Draw(const std::vector<WindowInfo> &windows, const std::ve
         }
     }
 
-    pRenderTarget->EndDraw();
+    HRESULT hr = m_d2dContext->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET) {
+        m_d2dContext.Reset();
+        m_swapChain.Reset();
+        CreateDeviceResources();
+    }
+    else m_swapChain->Present(1, 0);
 }
 
 void RailingRenderer::Resize()
 {
-    if (!pRenderTarget) return;
+    if (!m_d2dContext || !m_swapChain) return;
+    m_d2dContext->SetTarget(nullptr);
+
     RECT rc; GetClientRect(hwnd, &rc);
-    D2D1_SIZE_U newSize = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
-    pRenderTarget->Resize(newSize);
+    m_swapChain->ResizeBuffers(0, rc.right - rc.left, rc.bottom - rc.top, DXGI_FORMAT_UNKNOWN, 0);
+
+    // Re-link
+    ComPtr<IDXGISurface> dxgiBackBuffer;
+    m_swapChain->GetBuffer(0, IID_PPV_ARGS(&dxgiBackBuffer));
+
+    D2D1_BITMAP_PROPERTIES1 bitmapProperties = D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
+    );
+
+    ComPtr<ID2D1Bitmap1> d2dTargetBitmap;
+    m_d2dContext->CreateBitmapFromDxgiSurface(dxgiBackBuffer.Get(), &bitmapProperties, &d2dTargetBitmap);
+    m_d2dContext->SetTarget(d2dTargetBitmap.Get());
 
     UpdateBlurRegion();
 }
+
+void RailingRenderer::CreateDeviceResources() {
+    auto &hub = GraphicsHub::Get();
+
+    // Ensure Hub is fully loaded
+    if (!hub.Initialize()) {
+        OutputDebugStringA("CRITICAL: GraphicsHub failed to initialize.\n");
+        return;
+    }
+
+    // [FIX] Defensive Check
+    // Even if Initialize returned true, double-check d2dDevice before using "->"
+    if (!hub.d2dDevice) {
+        OutputDebugStringA("CRITICAL: Hub initialized but d2dDevice is NULL.\n");
+        return;
+    }
+
+    // Create Context
+    if (!m_d2dContext) {
+        HRESULT hr = hub.d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &m_d2dContext);
+        if (FAILED(hr)) {
+            OutputDebugStringA("Failed to create D2D Device Context.\n");
+            return;
+        }
+    }
+
+    if (!m_swapChain) {
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        UINT width = rc.right - rc.left;
+        UINT height = rc.bottom - rc.top;
+        if (width == 0) width = 1;
+        if (height == 0) height = 1;
+
+        DXGI_SWAP_CHAIN_DESC1 desc = {};
+		desc.Width = width;
+		desc.Height = height;
+		desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		desc.SampleDesc.Count = 1;
+		desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		desc.BufferCount = 2;
+        desc.Scaling = DXGI_SCALING_STRETCH;
+		desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+		desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
+
+        ComPtr<IDXGIAdapter> adapter;
+		hub.dxgiDevice->GetAdapter(&adapter);
+		ComPtr<IDXGIFactory2> dxgiFactory;
+		adapter->GetParent(IID_PPV_ARGS(&dxgiFactory));
+
+        HRESULT hr = dxgiFactory->CreateSwapChainForComposition(
+            hub.d3dDevice.Get(),
+            &desc,
+            nullptr,
+            &m_swapChain
+        );
+        if (SUCCEEDED(hr)) { // Bind SwapChain to Window via DirectComposition
+            hub.dcompDevice->CreateTargetForHwnd(hwnd, true, &m_dcompTarget);
+            hub.dcompDevice->CreateVisual(&m_dcompVisual);
+
+            m_dcompVisual->SetContent(m_swapChain.Get());
+            m_dcompTarget->SetRoot(m_dcompVisual.Get());
+            hub.dcompDevice->Commit();
+        }
+    }
+
+    if (m_d2dContext && m_swapChain) {
+		ComPtr<IDXGISurface> dxgiBackBuffer;
+		m_swapChain->GetBuffer(0, IID_PPV_ARGS(&dxgiBackBuffer));
+
+        D2D1_BITMAP_PROPERTIES1 bitmapProps = D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+
+		ComPtr<ID2D1Bitmap1> d2dTargetBitmap;
+		m_d2dContext->CreateBitmapFromDxgiSurface(dxgiBackBuffer.Get(), &bitmapProps, &d2dTargetBitmap);
+		m_d2dContext->SetTarget(d2dTargetBitmap.Get());
+    }
+
+    if (m_d2dContext) {
+		if (pTextBrush) pTextBrush->Release();
+		if (pBgBrush) pBgBrush->Release();
+		if (pBorderBrush) pBorderBrush->Release();
+
+        m_d2dContext->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), &pTextBrush);
+        m_d2dContext->CreateSolidColorBrush(theme.global.background, &pBgBrush);
+		m_d2dContext->CreateSolidColorBrush(theme.global.borderColor, &pBorderBrush); // Temp
+    }
+}
+
+ID2D1Factory *RailingRenderer::GetFactory() const { return GraphicsHub::Get().d2dFactory.Get(); }
+IWICImagingFactory *RailingRenderer::GetWICFactory() const { return GraphicsHub::Get().wicFactory.Get(); }
+IDWriteFactory *RailingRenderer::GetWriteFactory() const { return GraphicsHub::Get().writeFactory.Get(); }
 
 void RailingRenderer::UpdateBlurRegion()
 {
@@ -499,7 +599,8 @@ Module *RailingRenderer::GetModule(std::string id)
 void RailingRenderer::LoadAppIcon()
 {
     if (pAppIcon) return;
-    if (!pWICFactory) return;
+	auto wicFactory = GraphicsHub::Get().wicFactory.Get();
+    if (!wicFactory) return;
 
     HICON hIcon = nullptr;
 
@@ -527,30 +628,18 @@ void RailingRenderer::LoadAppIcon()
             0
         );
     }
-
-    if (hIcon) {
+    if (hIcon && m_d2dContext) {
         IWICBitmap *wicBitmap = nullptr;
-        HRESULT hr = pWICFactory->CreateBitmapFromHICON(hIcon, &wicBitmap);
-
-        if (SUCCEEDED(hr)) {
-            IWICFormatConverter *converter = nullptr;
-            pWICFactory->CreateFormatConverter(&converter);
-            converter->Initialize(
-                wicBitmap,
-                GUID_WICPixelFormat32bppPBGRA,
-                WICBitmapDitherTypeNone,
-                NULL,
-                0.f,
-                WICBitmapPaletteTypeMedianCut
-            );
-
-            pRenderTarget->CreateBitmapFromWicBitmap(converter, &pAppIcon);
-
-            converter->Release();
-            wicBitmap->Release();
+        if (SUCCEEDED(wicFactory->CreateBitmapFromHICON(hIcon, &wicBitmap))) {
+			IWICFormatConverter *converter = nullptr;
+			wicFactory->CreateFormatConverter(&converter);
+			converter->Initialize(wicBitmap, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+			m_d2dContext->CreateBitmapFromWicBitmap(converter, &pAppIcon);
+			converter->Release();
+			wicBitmap->Release();
         }
         DestroyIcon(hIcon);
-    }
+	}
 }
 
 Module *RailingRenderer::FindModuleRecursive(const std::vector<Module *> &list, const std::string &id)

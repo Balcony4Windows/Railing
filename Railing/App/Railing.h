@@ -20,6 +20,7 @@
 #include "NetworkFlyout.h"
 #include "MainMenu.h"
 #include "BarInstance.h"
+#include <NetworkBackend.h>
 
 #define HOTKEY_KILL_THIS 9001
 #define WM_RAILING_CMD (WM_APP+1)

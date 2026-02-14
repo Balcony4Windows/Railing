@@ -1,9 +1,16 @@
 #include "GraphicsHub.h"
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dcomp.lib")
 
 bool GraphicsHub::Initialize()
 {
+	if (d3dDevice && d2dDevice && d2dFactory && writeFactory && wicFactory) {
+		return true;
+	}
+
+	// If we are half-initialized (weird state), reset everything to start clean
+	Shutdown();
 	HRESULT hr = S_OK;
 
 	UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
@@ -23,12 +30,26 @@ bool GraphicsHub::Initialize()
 	if (FAILED(hr)) return false;
 
 	D2D1_FACTORY_OPTIONS options = {};
+#ifdef _DEBUG
+	options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
+#endif
 	hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1),
 		&options, &d2dFactory);
 	if (FAILED(hr)) return false;
 
+	hr = d2dFactory->CreateDevice(dxgiDevice.Get(), &d2dDevice);
+	if (FAILED(hr)) return false;
+
+	hr = DCompositionCreateDevice(
+		dxgiDevice.Get(),
+		__uuidof(IDCompositionDevice),
+		reinterpret_cast<void **>(dcompDevice.GetAddressOf())
+	);
+	if (FAILED(hr)) return false;
+
 	hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), &writeFactory);
 	if (FAILED(hr)) return false;
+
 	hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
 	if (FAILED(hr)) return false;
 	

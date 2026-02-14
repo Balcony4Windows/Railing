@@ -3,6 +3,7 @@
 #include <d2d1_1.h>
 #include <dwrite_3.h>
 #include <wincodec.h>
+#include <dcomp.h>
 #include <wrl/client.h>
 
 using namespace Microsoft::WRL;
@@ -22,6 +23,7 @@ public:
     ComPtr<ID3D11Device> d3dDevice;
     ComPtr<ID3D11DeviceContext> d3dContext;
     ComPtr<IDXGIDevice> dxgiDevice;
+    ComPtr<IDCompositionDevice> dcompDevice;
 
     // The Shared Factories
     ComPtr<ID2D1Factory1> d2dFactory; // Note: Factory1!!
@@ -31,6 +33,5 @@ public:
 
 private:
     GraphicsHub() = default;
-    ~GraphicsHub() { Shutdown(); }
 };
 
