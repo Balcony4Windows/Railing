@@ -1,0 +1,19 @@
+# Build output
+/out/
+/build/
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+CMakeUserPresets.json
+
+# vcpkg
+vcpkg_installed/
+
+# Misc
+*.pdb
+*.ilk
+*.log

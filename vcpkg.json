@@ -1,0 +1,12 @@
+{
+  "name": "balcony",
+  "version": "0.1.0",
+  "builtin-baseline": "ce288df5d66e13800a8e1e5aa8d47d916c190c25",
+  "dependencies": [
+    "lua",
+    "sol2",
+    "cereal",
+    "directx-headers",
+    "directxmath"
+  ]
+}
