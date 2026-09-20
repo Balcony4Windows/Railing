@@ -51,6 +51,12 @@ namespace balcony::windows
         void SetRightClickCallback(MouseClickCallback callback) { _onRightClick = std::move(callback); }
         void SetLeftClickCallback(MouseClickCallback callback) { _onLeftClick = std::move(callback); }
 
+        // Fired on WM_LBUTTONDBLCLK (the window class is created with
+        // CS_DBLCLKS so Windows actually generates this message) --
+        // independent of the plain click above, e.g. a desktop icon
+        // launches on double-click but does nothing on a single click.
+        void SetLeftDoubleClickCallback(MouseClickCallback callback) { _onLeftDoubleClick = std::move(callback); }
+
         // The three extra pieces a drag gesture needs on top of the
         // plain click above: where the button first went down, where
         // the cursor moves while it's held, and a signal if mouse
@@ -73,6 +79,7 @@ namespace balcony::windows
         ResizeCallback _onResize;
         MouseClickCallback _onRightClick;
         MouseClickCallback _onLeftClick;
+        MouseClickCallback _onLeftDoubleClick;
         MouseClickCallback _onLeftButtonDown;
         MouseClickCallback _onMouseMove;
         std::function<void()> _onCaptureLost;

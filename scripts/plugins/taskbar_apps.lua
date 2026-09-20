@@ -27,6 +27,17 @@ local function BuildStackedMenu(items)
     local menu = Tooltip.new()
     menu:Initialize()
 
+    -- menu:Add below only stores a non-owning C++ pointer into `text`
+    -- (same contract as every other Container::Add caller -- see the
+    -- note on `label` at the top of desktop.lua). Nothing else in Lua
+    -- keeps any individual `text` reachable once this function returns,
+    -- so without collecting them here, Lua's GC is free to collect each
+    -- one the next time it runs -- leaving `menu` holding dangling
+    -- children. That's what an apparently empty right-click menu (or an
+    -- outright crash opening one) actually was. Returned alongside
+    -- `menu` so the caller can keep both alive together for as long as
+    -- it keeps the menu itself.
+    local textItems = {}
     local maxWidth = 0
     local y = kMenuPaddingY
     for _, item in ipairs(items) do
@@ -40,10 +51,11 @@ local function BuildStackedMenu(items)
         maxWidth = math.max(maxWidth, size.width)
         y = y + size.height
         menu:Add(text)
+        table.insert(textItems, text)
     end
     menu:SetBounds(RectF.new(0, 0, maxWidth + kMenuPaddingX * 2, y + kMenuPaddingY))
 
-    return menu
+    return menu, textItems
 end
 
 -- Long window titles (a browser tab, a document path, ...) would
@@ -103,8 +115,25 @@ local function PersistPinned()
 end
 
 local function RemoveButtonVisuals(entry)
-    Taskbar:Remove(entry.icon)
-    Taskbar:Remove(entry.label)
+    Taskbar:Remove(entry.group)
+end
+
+-- Attaches the same click handler and right-click menu to the group
+-- AND to icon/label individually -- redundant by design. Container's
+-- hit-testing (used for both click and right-click routing) always
+-- prefers the most specific/deepest hit: land precisely on the icon or
+-- the label glyph and THAT component resolves as the hit; land
+-- anywhere else within the button's footprint (the gap between them,
+-- or padding around either) and neither child matches, so it falls
+-- through to the group itself. Wiring all three identically means the
+-- button responds correctly no matter which of the three ends up being
+-- the actual hit -- this is what makes the WHOLE button clickable
+-- instead of only each glyph's own tight bounds.
+local function WireButtonInteraction(group, icon, label, menu, onClick)
+    for _, component in ipairs({group, icon, label}) do
+        component:SetOnClick(onClick)
+        component:SetTooltip(menu)
+    end
 end
 
 -- Forward-declared: CreateUnpinnedButton/CreatePinnedButton's context
@@ -136,18 +165,23 @@ local function CreateUnpinnedButton(win)
             SetPinned(win.path, win.title, true)
         end})
     end
-    local menu = BuildStackedMenu(menuItems)
+    local menu, menuItemLabels = BuildStackedMenu(menuItems)
 
-    local function Activate() Windows.Activate(win.id) end
-    icon:SetOnClick(Activate)
-    label:SetOnClick(Activate)
-    icon:SetTooltip(menu)
-    label:SetTooltip(menu)
+    -- Wraps icon+label so the whole button footprint -- not just each
+    -- glyph's own tight bounds -- is one clickable/right-clickable
+    -- unit; see WireButtonInteraction. Positioned/sized by
+    -- LayoutButtons, same as icon/label themselves.
+    local group = Container.new()
+    group:Add(icon)
+    group:Add(label)
+    WireButtonInteraction(group, icon, label, menu, function() Windows.Activate(win.id) end)
 
-    Taskbar:Add(icon)
-    Taskbar:Add(label)
+    Taskbar:Add(group)
 
-    return {icon = icon, label = label, menu = menu, title = win.title}
+    -- menuItemLabels kept only to keep the menu's own Text items
+    -- reachable for as long as this button (and its menu) exist -- see
+    -- BuildStackedMenu.
+    return {group = group, icon = icon, label = label, menu = menu, menuItemLabels = menuItemLabels, title = win.title}
 end
 
 -- `win` is nil for a pinned app that isn't currently running (a
@@ -185,24 +219,24 @@ local function CreatePinnedButton(path, win)
     table.insert(menuItems, {text = "Unpin from Taskbar", onClick = function()
         SetPinned(path, nil, false)
     end})
-    local menu = BuildStackedMenu(menuItems)
+    local menu, menuItemLabels = BuildStackedMenu(menuItems)
 
-    local function Activate()
+    local group = Container.new()
+    group:Add(icon)
+    group:Add(label)
+    WireButtonInteraction(group, icon, label, menu, function()
         if win then
             Windows.Activate(win.id)
         else
             Shell.Launch(path)
         end
-    end
-    icon:SetOnClick(Activate)
-    label:SetOnClick(Activate)
-    icon:SetTooltip(menu)
-    label:SetTooltip(menu)
+    end)
 
-    Taskbar:Add(icon)
-    Taskbar:Add(label)
+    Taskbar:Add(group)
 
-    return {icon = icon, label = label, menu = menu, title = title, windowId = win and win.id or nil}
+    -- menuItemLabels kept only to keep the menu's own Text items
+    -- reachable -- see BuildStackedMenu.
+    return {group = group, icon = icon, label = label, menu = menu, menuItemLabels = menuItemLabels, title = title, windowId = win and win.id or nil}
 end
 
 -- Toggles a pin, persists immediately, and re-lays-out right away
@@ -261,8 +295,16 @@ local function LayoutButtons(entries)
         local y = bar.y + (bar.height - kButtonHeight) / 2
         b.icon:SetPosition(x, y + (kButtonHeight - kIconSize) / 2)
         local labelHeight = b.label:Bounds().height
+        local labelWidth = b.label:Bounds().width
         b.label:SetPosition(x + kIconSize + kLabelGapX, y + (kButtonHeight - labelHeight) / 2)
-        x = x + kIconSize + kLabelGapX + b.label:Bounds().width + kButtonGapX
+
+        -- The group's own bounds are what makes the gap between icon
+        -- and label (and any padding around either) clickable too --
+        -- see WireButtonInteraction.
+        local totalWidth = kIconSize + kLabelGapX + labelWidth
+        b.group:SetBounds(RectF.new(x, y, totalWidth, kButtonHeight))
+
+        x = x + totalWidth + kButtonGapX
     end
 end
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "balcony/core/Invalidation.h"
 #include "balcony/ui/Container.h"
 
 namespace balcony::renderer
@@ -32,8 +33,20 @@ namespace balcony::ui
         // Moves to (x, y), keeping whatever size was set via SetBounds,
         // and becomes visible.
         void Show(float x, float y);
-        void Hide() { _visible = false; }
+        void Hide() { _visible = false; balcony::core::RequestRedraw(); }
         bool IsVisible() const { return _visible; }
+
+        // Whether clicking something INSIDE this menu closes it
+        // afterward. Default true: a right-click context menu (e.g. the
+        // desktop's "Quit Balcony", taskbar_apps.lua's Pin/Unpin) is
+        // meant to close the instant its one action fires. A
+        // left-click quick-settings flyout (volume/network) is not --
+        // its whole point is staying open while you interact with
+        // several things inside it (drag the slider, switch devices,
+        // pick a network) and closing only when you click elsewhere.
+        // See DesktopEnvironment::HandleLeftClick.
+        void SetCloseOnClick(bool closeOnClick) { _closeOnClick = closeOnClick; }
+        bool CloseOnClick() const { return _closeOnClick; }
 
         void Draw(balcony::renderer::PrimitiveRenderer& renderer) const override;
 
@@ -43,5 +56,6 @@ namespace balcony::ui
 
     private:
         bool _visible = false;
+        bool _closeOnClick = true;
     };
 }

@@ -108,11 +108,6 @@ local function BuildStackedMenu(items)
     return menu
 end
 
--- Returns the group/icon/label/menu so the caller can keep them
--- referenced -- Desktop:Add()/Tooltip:Add()/Container:Add() only store
--- non-owning pointers (same contract as everywhere else in this file),
--- so anything not kept alive by a global would be garbage collected out
--- from under them.
 local function CreateDesktopIcon(path, displayName, defaultX, defaultY)
     local saved = Persistence.DesktopIconPosition(path)
     local x, y = defaultX, defaultY
@@ -136,12 +131,6 @@ local function CreateDesktopIcon(path, displayName, defaultX, defaultY)
     local labelSize = label:Bounds()
     label:SetPosition(x + (kIconSize - labelSize.width) / 2, y + kIconSize + kLabelGapY)
 
-    -- Right-click menu: laid out relative to the menu's own (0,0)
-    -- origin -- Tooltip:Show() translates the menu and its items
-    -- together, so this stays correctly aligned no matter where it ends
-    -- up being shown. "Pin to Taskbar" reuses the taskbar plugin's own
-    -- pin bookkeeping via a guarded global (see taskbar_apps.lua) --
-    -- guarded so this keeps working even if that plugin is ever removed.
     local menu = BuildStackedMenu({
         {text = "Open", onClick = function() Shell.Launch(path) end},
         {text = "Pin to Taskbar", onClick = function()
@@ -152,16 +141,11 @@ local function CreateDesktopIcon(path, displayName, defaultX, defaultY)
     local function Launch()
         Shell.Launch(path)
     end
-    icon:SetOnClick(Launch)
-    label:SetOnClick(Launch)
+    icon:SetOnDoubleClick(Launch)
+    label:SetOnDoubleClick(Launch)
     icon:SetTooltip(menu)
     label:SetTooltip(menu)
 
-    -- The draggable unit is the group, not icon/label individually --
-    -- Component::FindDraggable resolves to the nearest draggable
-    -- ancestor, so grabbing either the icon or the label starts a drag
-    -- of the whole group, while FindHit (used for clicks/right-click)
-    -- still resolves to icon/label themselves, unaffected.
     local group = Container.new()
     group:SetBounds(RectF.new(x, y, math.max(kIconSize, labelSize.width), kIconSize + kLabelGapY + labelSize.height))
     group:Add(icon)
@@ -177,17 +161,42 @@ local function CreateDesktopIcon(path, displayName, defaultX, defaultY)
     return group, icon, label, menu
 end
 
+-- Long file/shortcut names would otherwise overlap the next column --
+-- same reasoning (and UTF-8 ellipsis) as taskbar_apps.lua's
+-- TruncateTitle, just a different length for this narrower grid.
+local kMaxNameChars = 18
+local function TruncateName(name)
+    if #name > kMaxNameChars then
+        return name:sub(1, kMaxNameChars - 1) .. "\xe2\x80\xa6"
+    end
+    return name
+end
+
 -- Assigned to a global table (not local) for the same reason every
 -- other Desktop-added object in this file is global -- see the note at
 -- the top of the file.
+--
+-- Icons for whatever's actually sitting on the real Windows desktop
+-- right now (Shell.DesktopItems -- both the per-user and all-users
+-- desktop folders), arranged top-to-bottom then next-column -- the
+-- same default order Explorer itself uses -- for whichever ones don't
+-- already have a saved position from a previous drag (see
+-- CreateDesktopIcon's Persistence lookup above).
 desktopIcons = {}
-local iconEntries = {
-    {path = "C:/Windows/System32/notepad.exe", name = "Notepad"},
-    {path = "C:/Windows/explorer.exe", name = "File Explorer"},
-    {path = "C:/Windows/System32/cmd.exe", name = "Command Prompt"},
-}
-for i, entry in ipairs(iconEntries) do
-    local x, y = 40, 160 + (i - 1) * kIconSpacingY
-    local group, icon, label, menu = CreateDesktopIcon(entry.path, entry.name, x, y)
+local kDesktopMarginX = 40
+local kDesktopMarginY = 160 -- Below the "Hello from Lua!" label and clock above.
+local kIconColumnWidth = 120
+
+local usableHeight = Taskbar:Bounds().y - kDesktopMarginY
+local maxRows = math.max(1, math.floor(usableHeight / kIconSpacingY))
+
+local index = 0
+for _, item in ipairs(Shell.DesktopItems()) do
+    local column = math.floor(index / maxRows)
+    local row = index % maxRows
+    local x = kDesktopMarginX + column * kIconColumnWidth
+    local y = kDesktopMarginY + row * kIconSpacingY
+    local group, icon, label, menu = CreateDesktopIcon(item.path, TruncateName(item.displayName), x, y)
     table.insert(desktopIcons, {group = group, icon = icon, label = label, menu = menu})
+    index = index + 1
 end

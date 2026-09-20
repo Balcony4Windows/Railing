@@ -1,5 +1,7 @@
 #include "balcony/ui/Animation.h"
 
+#include "balcony/core/Invalidation.h"
+
 namespace balcony::ui
 {
     bool Animation::AddFrameFromFile(balcony::renderer::GraphicsDevice& device, balcony::renderer::CommandQueue& queue,
@@ -20,6 +22,8 @@ namespace balcony::ui
         if (_frames.size() < 2)
             return;
 
+        const size_t startingFrame = _currentFrame;
+
         _elapsed += deltaSeconds;
         while (_elapsed >= _frameDuration)
         {
@@ -29,6 +33,14 @@ namespace balcony::ui
                 _currentFrame = next;
             else if (_looping)
                 _currentFrame = 0;
+        }
+
+        // Only the C++ side knows a frame actually advanced here (this
+        // bypasses every Lua-visible setter) -- request the redraw
+        // that'd otherwise never happen. See Invalidation.h.
+        if (_currentFrame != startingFrame)
+        {
+            balcony::core::RequestRedraw();
         }
     }
 

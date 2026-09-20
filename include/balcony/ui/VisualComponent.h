@@ -1,5 +1,6 @@
 #pragma once
 
+#include "balcony/core/Invalidation.h"
 #include "balcony/renderer/Texture.h"
 #include "balcony/ui/Component.h"
 
@@ -23,13 +24,18 @@ namespace balcony::ui
     class VisualComponent : public Component
     {
     public:
-        void SetBounds(const balcony::renderer::RectF& bounds) { _bounds = bounds; }
+        // Every one of these requests a redraw -- see Invalidation.h.
+        // Cheap (a bool write) and correct by construction: whatever
+        // changes a component's visual state funnels through one of
+        // these, so a composer/script never needs to remember to ask
+        // for a repaint itself.
+        void SetBounds(const balcony::renderer::RectF& bounds) { _bounds = bounds; balcony::core::RequestRedraw(); }
         const balcony::renderer::RectF& Bounds() const { return _bounds; }
 
-        void SetPosition(float x, float y) { _bounds.x = x; _bounds.y = y; }
-        void SetSize(float width, float height) { _bounds.width = width; _bounds.height = height; }
+        void SetPosition(float x, float y) { _bounds.x = x; _bounds.y = y; balcony::core::RequestRedraw(); }
+        void SetSize(float width, float height) { _bounds.width = width; _bounds.height = height; balcony::core::RequestRedraw(); }
 
-        void Translate(float dx, float dy) override { _bounds.x += dx; _bounds.y += dy; }
+        void Translate(float dx, float dy) override { _bounds.x += dx; _bounds.y += dy; balcony::core::RequestRedraw(); }
 
         bool HitTest(float x, float y) const override { return _bounds.Contains(x, y); }
 
@@ -46,16 +52,25 @@ namespace balcony::ui
         {
             _backgroundColor = color;
             _hasBackground = true;
+            balcony::core::RequestRedraw();
         }
 
-        void SetBorderColor(const balcony::renderer::ColorRGBA& color) { _borderColor = color; }
-        void SetBorderWidth(float width) { _borderWidth = width; }
+        void SetBorderColor(const balcony::renderer::ColorRGBA& color) { _borderColor = color; balcony::core::RequestRedraw(); }
+        void SetBorderWidth(float width) { _borderWidth = width; balcony::core::RequestRedraw(); }
 
         // Draws the background/border (if any). Subclasses with their
         // own content call this explicitly from their own Draw();
         // components with no content of their own (Spacer, Container)
         // just inherit this as their whole Draw().
         void Draw(balcony::renderer::PrimitiveRenderer& renderer) const override;
+
+    protected:
+        // For a subclass (Canvas) that draws solid-colored shapes of its
+        // own, on top of the same shared, batched rendering path
+        // background/border already use -- reuses the SAME 1x1 white
+        // texture instead of every drawing call needing its own. Only
+        // meaningful once Initialize() has actually run.
+        uint32_t FillTextureSrvIndex() const { return _fillTexture.SrvIndex(); }
 
     private:
         balcony::renderer::RectF _bounds{};

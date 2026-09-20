@@ -2,6 +2,8 @@
 
 #include "balcony/components/Desktop.h"
 #include "balcony/components/Taskbar.h"
+#include "balcony/core/AudioBackend.h"
+#include "balcony/core/NetworkBackend.h"
 #include "balcony/core/SystemMonitors.h"
 #include "balcony/lua/LuaRuntime.h"
 #include "balcony/persistence/Persistence.h"
@@ -40,9 +42,20 @@ namespace balcony::components
         // coordinates are already client pixels.
         void HandleRightClick(int x, int y);
         void HandleLeftClick(int x, int y);
+        void HandleLeftDoubleClick(int x, int y);
         void HandleLeftButtonDown(int x, int y);
         void HandleMouseMove(int x, int y);
         void HandleCaptureLost();
+
+        // Shows `flyout` at (x, y) through the same _activeMenu
+        // machinery HandleRightClick's own menus already use (dismiss
+        // on click elsewhere, click-through to contents) -- the only
+        // difference is what triggers it. Exposed to Lua as
+        // Balcony.ShowFlyout so a left-click handler (e.g. the volume/
+        // network taskbar icons, which open on left-click like the real
+        // Windows quick-settings flyouts, not right-click like every
+        // other menu in this app) can open one too.
+        void ShowFlyout(balcony::ui::Tooltip* flyout, float x, float y);
 
         balcony::lua::LuaRuntime& Lua() { return _lua; }
 
@@ -77,5 +90,7 @@ namespace balcony::components
         balcony::lua::LuaRuntime _lua;
         balcony::core::SystemMonitors _systemMonitors;
         balcony::persistence::StateStore _stateStore;
+        balcony::core::AudioBackend _audioBackend;
+        balcony::core::NetworkBackend _networkBackend;
     };
 }

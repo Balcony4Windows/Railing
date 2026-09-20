@@ -9,6 +9,7 @@ add_library(balcony_ui STATIC
     Audio.cpp
     Container.cpp
     Tooltip.cpp
+    Canvas.cpp
     LuaBindings.cpp
 )
 

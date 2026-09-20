@@ -11,7 +11,17 @@ namespace balcony::ui
         {
             // Only on first init -- a repeat call (idempotent, e.g. from
             // a Lua wrapper) must not clobber a color set in between.
-            SetBackgroundColor({0.12f, 0.12f, 0.12f, 0.95f});
+            // Matches Taskbar's own default exactly (see
+            // DesktopEnvironment::Initialize) so every popup surface in
+            // the app -- right-click context menus and left-click
+            // flyouts alike -- reads as one coherent piece of chrome
+            // instead of each having its own look. Still fully
+            // overridable per-instance via SetBackgroundColor/
+            // SetBorderColor/SetBorderWidth (inherited from
+            // VisualComponent) for a composer that wants something else.
+            SetBackgroundColor({0.05f, 0.05f, 0.05f, 0.85f});
+            SetBorderColor({0.25f, 0.25f, 0.25f, 1.0f});
+            SetBorderWidth(1.0f);
         }
     }
 

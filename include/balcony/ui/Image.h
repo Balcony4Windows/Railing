@@ -1,5 +1,6 @@
 #pragma once
 
+#include "balcony/core/Invalidation.h"
 #include "balcony/renderer/Texture.h"
 #include "balcony/ui/VisualComponent.h"
 
@@ -38,7 +39,7 @@ namespace balcony::ui
                         balcony::renderer::PrimitiveRenderer& renderer,
                         uint32_t width, uint32_t height, const uint8_t* rgba8);
 
-        void SetOpacity(float opacity) { _opacity = opacity; }
+        void SetOpacity(float opacity) { _opacity = opacity; balcony::core::RequestRedraw(); }
 
         void Draw(balcony::renderer::PrimitiveRenderer& renderer) const override;
 

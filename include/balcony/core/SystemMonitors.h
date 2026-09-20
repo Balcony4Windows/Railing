@@ -33,6 +33,16 @@ namespace balcony::core
         std::string NetworkStatusString() const;
         std::string BatteryStatusString() const;
 
+        // Raw 0-100 readings alongside the display-ready strings above --
+        // a script rendering its own custom visual (a bar chart, a
+        // gauge, ...) needs the number, not a string it would have to
+        // parse back out. See CLAUDE.md section 6: System exposes
+        // information, the UI (here, a Canvas-based plugin) decides how
+        // to represent it.
+        float CpuUsagePercent() const { return _cpu.UsagePercent(); }
+        float MemoryUsagePercent() const { return _memory.UsagePercent(); }
+        float GpuUsagePercent() const { return _gpu.UsagePercent(); }
+
     private:
         CpuMonitor _cpu;
         MemoryMonitor _memory;

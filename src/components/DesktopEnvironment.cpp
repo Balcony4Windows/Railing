@@ -29,12 +29,23 @@ namespace balcony::components
         // (below) so a script can react to it each frame via Update().
         _lua.Initialize();
         balcony::ui::RegisterLuaBindings(_lua.State(), renderer);
-        balcony::core::RegisterLuaBindings(_lua.State(), _systemMonitors, reinterpret_cast<uint64_t>(window.Handle()));
+        _audioBackend.EnsureInitialized();
+        balcony::core::RegisterLuaBindings(_lua.State(), _systemMonitors, _audioBackend, _networkBackend, reinterpret_cast<uint64_t>(window.Handle()));
 
         // Must happen before any script runs below: desktop.lua reads
         // persisted icon positions synchronously while building icons.
         _stateStore.Load();
         balcony::persistence::RegisterLuaBindings(_lua.State(), _stateStore);
+
+        // Balcony.ShowFlyout needs `this` (to reach _activeMenu), which
+        // the standalone RegisterLuaBindings free functions above don't
+        // have -- registered directly here instead. See its own
+        // declaration in DesktopEnvironment.h for why it exists.
+        sol::table balconyTable = _lua.State()["Balcony"];
+        balconyTable.set_function("ShowFlyout", [this](balcony::ui::Tooltip& flyout, float x, float y)
+        {
+            ShowFlyout(&flyout, x, y);
+        });
 
         const float screenWidth = static_cast<float>(window.Width());
         const float screenHeight = static_cast<float>(window.Height());
@@ -157,8 +168,47 @@ namespace balcony::components
             return;
         }
 
-        tooltip->Show(fx, fy);
-        _activeMenu = tooltip;
+        ShowFlyout(tooltip, fx, fy);
+    }
+
+    void DesktopEnvironment::ShowFlyout(balcony::ui::Tooltip* flyout, float x, float y)
+    {
+        if (!flyout)
+        {
+            return;
+        }
+        // Opening a second menu while a different one is still open must
+        // actually close the first -- not just stop drawing it (Draw()/
+        // Update() only ever reach _activeMenu, so the old one would
+        // already vanish visually), but properly clear its own _visible
+        // flag too, since scripts read IsVisible() themselves (e.g. both
+        // flyouts gate their periodic re-poll on it). A no-op when
+        // switching within the same menu (e.g. RebuildDeviceList calling
+        // back into an already-open flyout) or when nothing was open.
+        if (_activeMenu && _activeMenu != flyout)
+        {
+            _activeMenu->Hide();
+        }
+
+        // Clamp so the menu always opens fully on-screen. A right-click
+        // menu shows AT the cursor -- fine for a desktop icon (usually
+        // nowhere near an edge), but a taskbar button's menu shows at a
+        // cursor that's already sitting right against the bottom edge,
+        // so opening downward from there put almost the entire menu
+        // below the visible screen (barely a sliver of border visible,
+        // no items reachable at all -- this is what a taskbar app's
+        // "missing" right-click menu actually was). Left-click flyouts
+        // (volume/network) already position themselves above their icon
+        // before calling this, so for them this is normally a no-op.
+        const balcony::renderer::RectF& screen = _desktop.Bounds();
+        const balcony::renderer::RectF& size = flyout->Bounds();
+        float clampedX = std::min(x, screen.x + screen.width - size.width);
+        float clampedY = std::min(y, screen.y + screen.height - size.height);
+        clampedX = std::max(clampedX, screen.x);
+        clampedY = std::max(clampedY, screen.y);
+
+        flyout->Show(clampedX, clampedY);
+        _activeMenu = flyout;
     }
 
     void DesktopEnvironment::HandleLeftClick(int x, int y)
@@ -187,13 +237,47 @@ namespace balcony::components
 
         if (_activeMenu && _activeMenu->IsVisible())
         {
-            if (balcony::ui::Component* hit = _activeMenu->FindHit(fx, fy))
+            // Never touch `menu` again once its own Hide()/Click() path
+            // below has run: a handler like "Pin"/"Unpin" (see
+            // taskbar_apps.lua) rebuilds the very button this menu
+            // belongs to, which drops every Lua reference to this
+            // Tooltip/Component -- touching them afterward would be a
+            // use-after-free the moment Lua's GC reclaims them (which
+            // can happen as soon as the next allocation, e.g. inside
+            // that same rebuild).
+            balcony::ui::Tooltip* menu = _activeMenu;
+            balcony::ui::Component* hit = menu->FindHit(fx, fy);
+
+            if (hit)
             {
+                // Landed on something inside the menu itself. A
+                // right-click context menu (CloseOnClick() true, the
+                // default) closes the instant its one action fires, same
+                // as before. A left-click quick-settings flyout
+                // (CloseOnClick() false -- volume/network) stays open:
+                // its whole point is surviving several interactions
+                // (drag the slider, switch devices, pick a network) and
+                // closing only on a click elsewhere, handled below.
+                if (menu->CloseOnClick())
+                {
+                    _activeMenu = nullptr;
+                    menu->Hide();
+                }
                 hit->Click();
+                return;
             }
-            _activeMenu->Hide();
+
+            // Landed outside the menu -- close it, then let the click
+            // fall through to whatever's actually there (the taskbar or
+            // desktop behind it), same as if no menu had been open at
+            // all. This is what makes switching flyouts (click a
+            // different tray icon while one is already open) a single
+            // click instead of "one click to close, a second to open
+            // the new one": that second icon's own SetOnClick handler
+            // -- which calls Balcony.ShowFlyout -- runs in THIS same
+            // click, right after Hide() below.
             _activeMenu = nullptr;
-            return;
+            menu->Hide();
         }
 
         // No menu open -- an ordinary click against the desktop/taskbar
@@ -210,21 +294,52 @@ namespace balcony::components
         }
     }
 
-    void DesktopEnvironment::HandleLeftButtonDown(int x, int y)
+    void DesktopEnvironment::HandleLeftDoubleClick(int x, int y)
     {
-        if (_activeMenu && _activeMenu->IsVisible())
+        if (_drag.dragging || (_activeMenu && _activeMenu->IsVisible()))
         {
-            // Never start a drag from inside an open context menu.
             return;
         }
 
         const float fx = static_cast<float>(x);
         const float fy = static_cast<float>(y);
 
-        balcony::ui::Component* hit = _taskbar.FindDraggable(fx, fy);
+        balcony::ui::Component* hit = _taskbar.FindHit(fx, fy);
         if (!hit)
         {
-            hit = _desktop.FindDraggable(fx, fy);
+            hit = _desktop.FindHit(fx, fy);
+        }
+        if (hit)
+        {
+            hit->DoubleClick();
+        }
+    }
+
+    void DesktopEnvironment::HandleLeftButtonDown(int x, int y)
+    {
+        const float fx = static_cast<float>(x);
+        const float fy = static_cast<float>(y);
+
+        balcony::ui::Component* hit = nullptr;
+        if (_activeMenu && _activeMenu->IsVisible())
+        {
+            // Only look for something draggable WITHIN the open menu
+            // itself -- e.g. the volume flyout's slider, or the network
+            // flyout's scrollable list, both opened via
+            // Balcony.ShowFlyout and genuinely meant to be interacted
+            // with while "open". Deliberately never falls through to
+            // the taskbar/desktop below: dragging something BEHIND an
+            // open menu (a desktop icon, say) would be a confusing
+            // interaction while a menu has focus.
+            hit = _activeMenu->FindDraggable(fx, fy);
+        }
+        else
+        {
+            hit = _taskbar.FindDraggable(fx, fy);
+            if (!hit)
+            {
+                hit = _desktop.FindDraggable(fx, fy);
+            }
         }
         if (!hit)
         {
@@ -260,7 +375,19 @@ namespace balcony::components
             _drag.dragging = true;
         }
 
-        _drag.target->Translate(fx - _drag.lastX, fy - _drag.lastY);
+        // Mutually exclusive by which callback the composer wired up: a
+        // component with SetOnDrag set (a slider, a scrollbar thumb)
+        // gets raw cursor coordinates to interpret however it wants;
+        // one without it (a desktop icon) gets repositioned by the
+        // move's delta, same as before. See Component::SetOnDrag.
+        if (_drag.target->HasOnDrag())
+        {
+            _drag.target->Drag(fx, fy);
+        }
+        else
+        {
+            _drag.target->Translate(fx - _drag.lastX, fy - _drag.lastY);
+        }
         _drag.lastX = fx;
         _drag.lastY = fy;
     }

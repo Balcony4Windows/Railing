@@ -2,8 +2,13 @@
 
 #include <Windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+
+#include <wrl/client.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <string>
 #include <utility>
 
@@ -149,6 +154,66 @@ namespace balcony::core
             outHeight = height;
             return true;
         }
+
+        bool EndsWithNoCase(std::wstring_view text, std::wstring_view suffix)
+        {
+            if (text.size() < suffix.size())
+            {
+                return false;
+            }
+
+            std::wstring tail(text.substr(text.size() - suffix.size()));
+            std::wstring lowerSuffix(suffix);
+            std::transform(tail.begin(), tail.end(), tail.begin(), ::towlower);
+            std::transform(lowerSuffix.begin(), lowerSuffix.end(), lowerSuffix.begin(), ::towlower);
+            return tail == lowerSuffix;
+        }
+
+        // Resolves a .lnk shortcut to the (file, icon index) it actually
+        // wants shown -- an icon location it specifies explicitly, or
+        // (the common case) its target's own path. Extracting the icon
+        // resource directly from that, rather than asking the shell for
+        // an icon representing the .lnk file itself, is what avoids the
+        // shell's automatic "this is a shortcut" arrow badge in
+        // ExtractIconPixels below -- nothing here asks the shell to
+        // represent a link, it just reads an icon resource out of a
+        // file.
+        bool ResolveShortcutIconSource(const std::wstring& lnkPath, std::wstring& outPath, int& outIndex)
+        {
+            Microsoft::WRL::ComPtr<IShellLinkW> shellLink;
+            if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shellLink))))
+            {
+                return false;
+            }
+
+            Microsoft::WRL::ComPtr<IPersistFile> persistFile;
+            if (FAILED(shellLink.As(&persistFile)) || FAILED(persistFile->Load(lnkPath.c_str(), STGM_READ)))
+            {
+                return false;
+            }
+
+            wchar_t iconPath[MAX_PATH] = {};
+            int iconIndex = 0;
+            if (SUCCEEDED(shellLink->GetIconLocation(iconPath, MAX_PATH, &iconIndex)) && iconPath[0] != L'\0')
+            {
+                outPath = iconPath;
+                outIndex = iconIndex;
+                return true;
+            }
+
+            // Most shortcuts don't set an explicit icon location -- they
+            // just inherit whatever icon their target exposes.
+            wchar_t targetPath[MAX_PATH] = {};
+            WIN32_FIND_DATAW findData{};
+            if (SUCCEEDED(shellLink->GetPath(targetPath, MAX_PATH, &findData, SLGP_RAWPATH)) && targetPath[0] != L'\0')
+            {
+                outPath = targetPath;
+                outIndex = 0;
+                return true;
+            }
+
+            return false;
+        }
     }
 
     bool ExtractIconPixels(std::wstring_view path, std::vector<uint8_t>& outRgba, uint32_t& outWidth, uint32_t& outHeight)
@@ -160,6 +225,38 @@ namespace balcony::core
         std::wstring pathStr(path);
         std::replace(pathStr.begin(), pathStr.end(), L'/', L'\\');
 
+        int iconIndex = 0;
+        if (EndsWithNoCase(pathStr, L".lnk"))
+        {
+            std::wstring resolvedPath;
+            int resolvedIndex = 0;
+            if (ResolveShortcutIconSource(pathStr, resolvedPath, resolvedIndex))
+            {
+                pathStr = std::move(resolvedPath);
+                iconIndex = resolvedIndex;
+            }
+        }
+
+        // Request a large icon (up to 256x256) directly by resource
+        // index -- SHGetFileInfoW's SHGFI_LARGEICON below caps out at a
+        // blurry 32x32 no matter how high-resolution the source icon
+        // actually is; most modern icon resources bundle a much bigger
+        // frame than that.
+        HICON extractedIcons[1] = {};
+        const UINT extractedCount = PrivateExtractIconsW(pathStr.c_str(), iconIndex, 256, 256, extractedIcons, nullptr, 1, 0);
+        if (extractedCount > 0 && extractedIcons[0])
+        {
+            ScopedIcon icon{extractedIcons[0]};
+            if (ExtractIconPixelsFromHandle(icon.handle, outRgba, outWidth, outHeight))
+            {
+                return true;
+            }
+        }
+
+        // Fall back to the shell's own representative icon -- covers
+        // cases PrivateExtractIconsW doesn't (a bare document with no
+        // icon resource of its own, a folder, ...), at the cost of the
+        // 32x32 cap.
         SHFILEINFOW shfi{};
         if (!SHGetFileInfoW(pathStr.c_str(), 0, &shfi, sizeof(shfi), SHGFI_ICON | SHGFI_LARGEICON))
         {

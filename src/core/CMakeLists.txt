@@ -15,6 +15,10 @@ add_library(balcony_core STATIC
     Launcher.cpp
     IconExtractor.cpp
     WindowEnumerator.cpp
+    DesktopItems.cpp
+    Invalidation.cpp
+    AudioBackend.cpp
+    NetworkBackend.cpp
 )
 
 target_include_directories(balcony_core
@@ -33,6 +37,7 @@ target_link_libraries(balcony_core
         gdi32
         user32
         dwmapi
+        ole32
         ${LUA_LIBRARIES}
         balcony_compiler_options
 )

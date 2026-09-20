@@ -1,5 +1,7 @@
 #include "balcony/windows/WindowsIntegration.h"
 
+#include "balcony/core/Invalidation.h"
+
 #include <windowsx.h>
 
 namespace balcony::windows
@@ -48,6 +50,7 @@ namespace balcony::windows
                 {
                     _onResize(_width, _height);
                 }
+                balcony::core::RequestRedraw();
             }
             return 0;
 
@@ -61,6 +64,7 @@ namespace balcony::windows
             {
                 _onRightClick(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
             }
+            balcony::core::RequestRedraw();
             return 0;
 
         case WM_LBUTTONDOWN:
@@ -72,9 +76,16 @@ namespace balcony::windows
             {
                 _onLeftButtonDown(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
             }
+            balcony::core::RequestRedraw();
             return 0;
 
         case WM_MOUSEMOVE:
+            // Deliberately no RequestRedraw() here -- this fires
+            // constantly while the cursor merely moves, and there's no
+            // hover-reactive UI in this codebase to need a repaint for
+            // that alone. An active drag still redraws every move: it
+            // goes through Component::Translate, which already requests
+            // one (see VisualComponent.h).
             if (_onMouseMove)
             {
                 _onMouseMove(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
@@ -94,6 +105,7 @@ namespace balcony::windows
                 _onLeftClick(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
             }
             ReleaseCapture();
+            balcony::core::RequestRedraw();
             return 0;
 
         case WM_CAPTURECHANGED:
@@ -101,6 +113,14 @@ namespace balcony::windows
             {
                 _onCaptureLost();
             }
+            return 0;
+
+        case WM_LBUTTONDBLCLK:
+            if (_onLeftDoubleClick)
+            {
+                _onLeftDoubleClick(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            }
+            balcony::core::RequestRedraw();
             return 0;
 
         case WM_CLOSE:
@@ -123,7 +143,7 @@ namespace balcony::windows
 
         WNDCLASSEXW windowClass{};
         windowClass.cbSize = sizeof(WNDCLASSEXW);
-        windowClass.style = CS_HREDRAW | CS_VREDRAW;
+        windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
         windowClass.lpfnWndProc = &Window::WndProc;
         windowClass.hInstance = instance;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);

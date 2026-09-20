@@ -76,6 +76,15 @@ namespace balcony::ui
         void SetOnClick(std::function<void()> handler) { _onClick = std::move(handler); }
         void Click() const { if (_onClick) _onClick(); }
 
+        // A second, independent click handler fired only on a genuine
+        // Windows double-click (see Window's WM_LBUTTONDBLCLK handling
+        // and DesktopEnvironment::HandleLeftDoubleClick) -- e.g. desktop
+        // icons launch on double-click, matching Explorer, while a
+        // single click on the same icon does nothing (no selection
+        // model yet, so there's nothing else for it to do).
+        void SetOnDoubleClick(std::function<void()> handler) { _onDoubleClick = std::move(handler); }
+        void DoubleClick() const { if (_onDoubleClick) _onDoubleClick(); }
+
         void SetDraggable(bool draggable) { _draggable = draggable; }
         bool IsDraggable() const { return _draggable; }
 
@@ -88,10 +97,27 @@ namespace balcony::ui
         void SetOnDragEnd(std::function<void()> handler) { _onDragEnd = std::move(handler); }
         void DragEnd() const { if (_onDragEnd) _onDragEnd(); }
 
+        // A second, independent drag callback for continuous-VALUE
+        // widgets (a slider, a scrollbar thumb) rather than
+        // repositioning ones (a desktop icon): fired on every mouse
+        // move while this component is being dragged, with the cursor's
+        // absolute position, instead of once at the end with none.
+        // DesktopEnvironment's drag state machine treats the two as
+        // mutually exclusive by which one a component has wired up --
+        // see HasOnDrag()/DesktopEnvironment::HandleMouseMove: a
+        // component with SetOnDrag set receives raw coordinates to
+        // interpret however it wants (e.g. a Canvas computing a
+        // fraction along its own track) instead of being Translate()'d.
+        void SetOnDrag(std::function<void(float x, float y)> handler) { _onDrag = std::move(handler); }
+        bool HasOnDrag() const { return static_cast<bool>(_onDrag); }
+        void Drag(float x, float y) const { if (_onDrag) _onDrag(x, y); }
+
     private:
         Tooltip* _tooltip = nullptr;
         std::function<void()> _onClick;
+        std::function<void()> _onDoubleClick;
         bool _draggable = false;
         std::function<void()> _onDragEnd;
+        std::function<void(float, float)> _onDrag;
     };
 }

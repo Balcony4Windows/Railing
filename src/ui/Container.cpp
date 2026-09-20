@@ -1,5 +1,7 @@
 #include "balcony/ui/Container.h"
 
+#include "balcony/core/Invalidation.h"
+
 #include <algorithm>
 
 namespace balcony::ui
@@ -7,12 +9,16 @@ namespace balcony::ui
     void Container::Add(Component* component)
     {
         if (component)
+        {
             _children.push_back(component);
+            balcony::core::RequestRedraw();
+        }
     }
 
     void Container::Remove(Component* component)
     {
         _children.erase(std::remove(_children.begin(), _children.end(), component), _children.end());
+        balcony::core::RequestRedraw();
     }
 
     void Container::Update(float deltaSeconds)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "balcony/core/Invalidation.h"
 #include "balcony/renderer/Texture.h"
 #include "balcony/ui/VisualComponent.h"
 
@@ -33,7 +34,7 @@ namespace balcony::ui
         bool SetText(balcony::renderer::GraphicsDevice& device, balcony::renderer::CommandQueue& queue,
                      balcony::renderer::PrimitiveRenderer& renderer, std::wstring_view text);
 
-        void SetColor(const balcony::renderer::ColorRGBA& color) { _color = color; }
+        void SetColor(const balcony::renderer::ColorRGBA& color) { _color = color; balcony::core::RequestRedraw(); }
 
         void Draw(balcony::renderer::PrimitiveRenderer& renderer) const override;
 

@@ -1,5 +1,7 @@
 #include "balcony/ui/Image.h"
 
+#include "balcony/core/Invalidation.h"
+
 namespace balcony::ui
 {
     bool Image::SetSource(balcony::renderer::GraphicsDevice& device, balcony::renderer::CommandQueue& queue,
@@ -20,7 +22,16 @@ namespace balcony::ui
         _texture = texture;
         if (Bounds().width == 0.0f && Bounds().height == 0.0f)
         {
+            // Already requests a redraw (see VisualComponent::SetSize).
             SetSize(static_cast<float>(texture.Width()), static_cast<float>(texture.Height()));
+        }
+        else
+        {
+            // Bounds were already set (the common case -- e.g. an icon
+            // sized before its content is known), so SetSize above was
+            // skipped; the new texture content is still a visual change
+            // that needs its own explicit request.
+            balcony::core::RequestRedraw();
         }
     }
 
@@ -32,6 +43,10 @@ namespace balcony::ui
         if (Bounds().width == 0.0f && Bounds().height == 0.0f)
         {
             SetSize(static_cast<float>(width), static_cast<float>(height));
+        }
+        else
+        {
+            balcony::core::RequestRedraw();
         }
     }
 
