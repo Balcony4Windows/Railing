@@ -18,6 +18,7 @@ target_link_libraries(balcony_components
         balcony_renderer
         balcony_windows
         balcony_lua
+        balcony_persistence
     PRIVATE
         balcony_compiler_options
 )

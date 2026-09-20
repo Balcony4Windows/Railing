@@ -63,10 +63,43 @@ namespace balcony::windows
             }
             return 0;
 
+        case WM_LBUTTONDOWN:
+            // Capture guarantees WM_MOUSEMOVE/WM_LBUTTONUP keep arriving
+            // here even if a fast drag carries the cursor outside the
+            // window's bounds.
+            SetCapture(_hwnd);
+            if (_onLeftButtonDown)
+            {
+                _onLeftButtonDown(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            }
+            return 0;
+
+        case WM_MOUSEMOVE:
+            if (_onMouseMove)
+            {
+                _onMouseMove(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            }
+            return 0;
+
         case WM_LBUTTONUP:
+            // Fired before ReleaseCapture() below: the click callback
+            // clears any drag state first, so the WM_CAPTURECHANGED that
+            // ReleaseCapture() triggers synchronously is a harmless
+            // no-op in the ordinary case, and only does real work when
+            // something else steals capture mid-drag without a
+            // preceding button-up (e.g. alt-tab -- see WM_CAPTURECHANGED
+            // below).
             if (_onLeftClick)
             {
                 _onLeftClick(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            }
+            ReleaseCapture();
+            return 0;
+
+        case WM_CAPTURECHANGED:
+            if (_onCaptureLost)
+            {
+                _onCaptureLost();
             }
             return 0;
 
@@ -137,8 +170,13 @@ namespace balcony::windows
         // app: show it without stealing focus/activation, and keep it at
         // the very bottom of the z-order -- the same contract Explorer's
         // own desktop window follows.
-        SetWindowPos(_hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        KeepAtBottom();
         ShowWindow(_hwnd, SW_SHOWNOACTIVATE);
+    }
+
+    void Window::KeepAtBottom()
+    {
+        SetWindowPos(_hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOREDRAW);
     }
 
     bool Window::PumpMessages()

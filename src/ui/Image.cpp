@@ -24,6 +24,17 @@ namespace balcony::ui
         }
     }
 
+    void Image::SetPixels(balcony::renderer::GraphicsDevice& device, balcony::renderer::CommandQueue& queue,
+                           balcony::renderer::PrimitiveRenderer& renderer,
+                           uint32_t width, uint32_t height, const uint8_t* rgba8)
+    {
+        _texture.CreateFromPixels(device, queue, renderer, width, height, rgba8);
+        if (Bounds().width == 0.0f && Bounds().height == 0.0f)
+        {
+            SetSize(static_cast<float>(width), static_cast<float>(height));
+        }
+    }
+
     void Image::Draw(balcony::renderer::PrimitiveRenderer& renderer) const
     {
         VisualComponent::Draw(renderer);

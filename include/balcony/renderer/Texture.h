@@ -30,10 +30,17 @@ namespace balcony::renderer
         uint32_t SrvIndex() const { return _srvIndex; }
         bool IsValid() const { return _resource != nullptr; }
 
+        // Sentinel meaning "this Texture has never been registered with a
+        // PrimitiveRenderer's SRV heap yet" -- distinct from a real index
+        // (0 is a valid slot), so CreateFromPixels can tell a first-time
+        // upload (needs a new slot) apart from replacing content in place
+        // (reuse the slot it already has). See CreateFromPixels.
+        static constexpr uint32_t kInvalidSrvIndex = UINT32_MAX;
+
     private:
         Microsoft::WRL::ComPtr<ID3D12Resource> _resource;
         uint32_t _width = 0;
         uint32_t _height = 0;
-        uint32_t _srvIndex = 0;
+        uint32_t _srvIndex = kInvalidSrvIndex;
     };
 }

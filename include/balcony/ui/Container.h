@@ -40,6 +40,13 @@ namespace balcony::ui
         // child wins over its parent.
         Component* FindHit(float x, float y) override;
 
+        // Same search order as FindHit, but for draggability -- see
+        // Component::FindDraggable. Lets e.g. a desktop icon's Image
+        // (not itself draggable) resolve to its wrapping Container (the
+        // draggable unit) while FindHit still resolves to the Image
+        // itself for click purposes.
+        Component* FindDraggable(float x, float y) override;
+
     private:
         std::vector<Component*> _children;
     };

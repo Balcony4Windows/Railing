@@ -113,7 +113,13 @@ namespace balcony::renderer
 
         _width = width;
         _height = height;
-        _srvIndex = renderer.RegisterTexture(device, _resource.Get());
+        // Reuse this Texture's own slot if it already has one (e.g. a
+        // clock re-rasterizing every second, or a taskbar label whose
+        // title just changed) instead of allocating a new descriptor
+        // every call -- otherwise the SRV heap's fixed capacity is
+        // exhausted within minutes and CreateShaderResourceView starts
+        // writing descriptors past the end of it, corrupting the heap.
+        _srvIndex = renderer.RegisterTexture(device, _resource.Get(), _srvIndex);
     }
 
     bool Texture::CreateFromFile(GraphicsDevice& device, CommandQueue& queue, PrimitiveRenderer& renderer,

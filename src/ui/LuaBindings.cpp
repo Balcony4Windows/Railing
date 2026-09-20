@@ -59,7 +59,10 @@ namespace balcony::ui
         lua.new_usertype<Component>("Component",
             "SetTooltip", &Component::SetTooltip,
             "GetTooltip", &Component::GetTooltip,
-            "SetOnClick", &Component::SetOnClick);
+            "SetOnClick", &Component::SetOnClick,
+            "SetDraggable", &Component::SetDraggable,
+            "IsDraggable", &Component::IsDraggable,
+            "SetOnDragEnd", &Component::SetOnDragEnd);
 
         lua.new_usertype<VisualComponent>("VisualComponent",
             sol::base_classes, sol::bases<Component>(),
@@ -114,9 +117,10 @@ namespace balcony::ui
                     return false;
                 }
 
-                balcony::renderer::Texture texture;
-                texture.CreateFromPixels(renderer.Device(), renderer.Queue(), renderer.Primitives(), width, height, pixels.data());
-                self.SetTexture(texture);
+                // SetPixels (not SetTexture(freshTexture)) so a re-icon on
+                // the same Image reuses its existing SRV slot instead of
+                // leaking a new one -- see Image::SetPixels.
+                self.SetPixels(renderer.Device(), renderer.Queue(), renderer.Primitives(), width, height, pixels.data());
                 return true;
             },
             "SetWindowIcon", [&renderer](Image& self, uint64_t windowId)
@@ -129,9 +133,7 @@ namespace balcony::ui
                     return false;
                 }
 
-                balcony::renderer::Texture texture;
-                texture.CreateFromPixels(renderer.Device(), renderer.Queue(), renderer.Primitives(), width, height, pixels.data());
-                self.SetTexture(texture);
+                self.SetPixels(renderer.Device(), renderer.Queue(), renderer.Primitives(), width, height, pixels.data());
                 return true;
             });
 

@@ -47,6 +47,20 @@ namespace balcony::ui
         // overrides it to search children first.
         virtual Component* FindHit(float x, float y) { return HitTest(x, y) ? this : nullptr; }
 
+        // Returns the nearest DRAGGABLE component at (x, y), or nullptr
+        // -- deliberately separate from FindHit above. Click-hit-testing
+        // must keep resolving to the deepest leaf (e.g. a desktop icon's
+        // Image/Text, each with its own independent OnClick/Tooltip),
+        // while drag-hit-testing needs to resolve to the nearest
+        // draggable ANCESTOR (e.g. a Container wrapping that icon+label
+        // pair, since dragging is a whole-group gesture). Keeping these
+        // as two independent virtuals means neither needs to know about
+        // the other, and no parent back-pointers are needed anywhere.
+        // The default just applies IsDraggable()+HitTest to this
+        // component; Container overrides it to search children first,
+        // exactly mirroring FindHit.
+        virtual Component* FindDraggable(float x, float y) { return (_draggable && HitTest(x, y)) ? this : nullptr; }
+
         // Shifts this component by (dx, dy). Default is a no-op (most
         // components are positioned once and never moved again).
         // VisualComponent shifts its own bounds; Container additionally
@@ -62,8 +76,22 @@ namespace balcony::ui
         void SetOnClick(std::function<void()> handler) { _onClick = std::move(handler); }
         void Click() const { if (_onClick) _onClick(); }
 
+        void SetDraggable(bool draggable) { _draggable = draggable; }
+        bool IsDraggable() const { return _draggable; }
+
+        // Fired once when a drag that actually moved past the click
+        // threshold ends (see DesktopEnvironment's drag state machine);
+        // never fired for an ordinary click. No coordinates are passed
+        // -- the composer's own closure already knows which object this
+        // is (it's the one that called SetOnDragEnd) and can read its
+        // current Bounds() itself.
+        void SetOnDragEnd(std::function<void()> handler) { _onDragEnd = std::move(handler); }
+        void DragEnd() const { if (_onDragEnd) _onDragEnd(); }
+
     private:
         Tooltip* _tooltip = nullptr;
         std::function<void()> _onClick;
+        bool _draggable = false;
+        std::function<void()> _onDragEnd;
     };
 }

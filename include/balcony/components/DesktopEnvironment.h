@@ -4,6 +4,7 @@
 #include "balcony/components/Taskbar.h"
 #include "balcony/core/SystemMonitors.h"
 #include "balcony/lua/LuaRuntime.h"
+#include "balcony/persistence/Persistence.h"
 #include "balcony/ui/Text.h"
 #include "balcony/ui/Tooltip.h"
 
@@ -39,6 +40,9 @@ namespace balcony::components
         // coordinates are already client pixels.
         void HandleRightClick(int x, int y);
         void HandleLeftClick(int x, int y);
+        void HandleLeftButtonDown(int x, int y);
+        void HandleMouseMove(int x, int y);
+        void HandleCaptureLost();
 
         balcony::lua::LuaRuntime& Lua() { return _lua; }
 
@@ -52,7 +56,26 @@ namespace balcony::components
         // At most one context menu is open at a time.
         balcony::ui::Tooltip* _activeMenu = nullptr;
 
+        // Click-vs-drag state machine: a mouse-down just remembers the
+        // hit draggable component and where the button went down;
+        // `dragging` only flips true once the cursor has moved past
+        // Windows' own click threshold (GetSystemMetrics(SM_CXDRAG/
+        // SM_CYDRAG)), so an ordinary click-without-movement never
+        // triggers a drag. See HandleLeftButtonDown/HandleMouseMove/
+        // HandleLeftClick.
+        struct DragState
+        {
+            balcony::ui::Component* target = nullptr;
+            float startX = 0.0f;
+            float startY = 0.0f;
+            float lastX = 0.0f;
+            float lastY = 0.0f;
+            bool dragging = false;
+        };
+        DragState _drag;
+
         balcony::lua::LuaRuntime _lua;
         balcony::core::SystemMonitors _systemMonitors;
+        balcony::persistence::StateStore _stateStore;
     };
 }

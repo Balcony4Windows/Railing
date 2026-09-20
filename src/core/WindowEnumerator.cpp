@@ -51,6 +51,34 @@ namespace balcony::core
             return true;
         }
 
+        std::wstring GetProcessExecutablePath(HWND hwnd)
+        {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(hwnd, &pid);
+            if (pid == 0)
+            {
+                return {};
+            }
+
+            // QUERY_LIMITED_INFORMATION -- the narrowest right that
+            // still permits QueryFullProcessImageNameW -- is more
+            // likely to be grantable against a higher-integrity
+            // (elevated) process than QUERY_INFORMATION, though it can
+            // still fail there; that's a graceful degradation (empty
+            // path, see RunningWindowInfo::path), not an error.
+            const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if (!process)
+            {
+                return {};
+            }
+
+            wchar_t buffer[MAX_PATH];
+            DWORD size = MAX_PATH;
+            const bool ok = QueryFullProcessImageNameW(process, 0, buffer, &size);
+            CloseHandle(process);
+            return ok ? std::wstring(buffer, size) : std::wstring{};
+        }
+
         BOOL CALLBACK EnumProc(HWND hwnd, LPARAM lparam)
         {
             EnumContext& context = *reinterpret_cast<EnumContext*>(lparam);
@@ -69,7 +97,7 @@ namespace balcony::core
             const int actualLength = GetWindowTextW(hwnd, title.data(), length + 1);
             title.resize(static_cast<size_t>(actualLength));
 
-            context.out->push_back({reinterpret_cast<uint64_t>(hwnd), std::move(title)});
+            context.out->push_back({reinterpret_cast<uint64_t>(hwnd), std::move(title), GetProcessExecutablePath(hwnd)});
             return TRUE;
         }
     }

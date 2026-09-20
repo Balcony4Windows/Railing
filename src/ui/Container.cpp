@@ -40,6 +40,17 @@ namespace balcony::ui
         return HitTest(x, y) ? this : nullptr;
     }
 
+    Component* Container::FindDraggable(float x, float y)
+    {
+        for (auto it = _children.rbegin(); it != _children.rend(); ++it)
+        {
+            if (Component* hit = (*it)->FindDraggable(x, y))
+                return hit;
+        }
+
+        return Component::FindDraggable(x, y);
+    }
+
     void Container::Translate(float dx, float dy)
     {
         VisualComponent::Translate(dx, dy);

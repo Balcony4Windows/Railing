@@ -56,6 +56,21 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
         desktopEnvironment.HandleLeftClick(x, y);
     });
 
+    window.SetLeftButtonDownCallback([&desktopEnvironment](int x, int y)
+    {
+        desktopEnvironment.HandleLeftButtonDown(x, y);
+    });
+
+    window.SetMouseMoveCallback([&desktopEnvironment](int x, int y)
+    {
+        desktopEnvironment.HandleMouseMove(x, y);
+    });
+
+    window.SetCaptureLostCallback([&desktopEnvironment]()
+    {
+        desktopEnvironment.HandleCaptureLost();
+    });
+
     window.Show();
 
     LARGE_INTEGER frequency{};
@@ -65,6 +80,12 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 
     while (window.PumpMessages())
     {
+        // Ordinary desktop activity (a window opening, closing, or being
+        // activated) can shuffle Balcony back up the z-order; re-pin it
+        // to the bottom every frame rather than relying on the one-time
+        // placement from Show(). See Window::KeepAtBottom.
+        window.KeepAtBottom();
+
         LARGE_INTEGER now{};
         QueryPerformanceCounter(&now);
         const float deltaSeconds = static_cast<float>(now.QuadPart - lastTime.QuadPart) / static_cast<float>(frequency.QuadPart);

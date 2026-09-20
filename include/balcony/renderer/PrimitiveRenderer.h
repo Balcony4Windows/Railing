@@ -38,7 +38,14 @@ namespace balcony::renderer
 
         // Creates an SRV for `resource` in the shared heap and returns its
         // index. Used internally by Texture -- primitives never call this.
-        uint32_t RegisterTexture(GraphicsDevice& device, ID3D12Resource* resource);
+        //
+        // `existingIndex`: pass Texture::kInvalidSrvIndex (the default) to
+        // allocate a fresh slot; pass a previously-returned index to
+        // overwrite that same slot in place instead (what a Texture being
+        // re-uploaded -- e.g. a clock re-rasterizing every second -- does,
+        // so the heap's fixed capacity isn't exhausted by repeated updates
+        // to the same long-lived Texture).
+        uint32_t RegisterTexture(GraphicsDevice& device, ID3D12Resource* resource, uint32_t existingIndex = UINT32_MAX);
 
         void Begin(ID3D12GraphicsCommandList* commandList, uint32_t frameIndex, uint32_t screenWidth, uint32_t screenHeight);
         void DrawQuad(const RectF& rect, uint32_t textureSrvIndex, const RectF& uv = RectF{0.0f, 0.0f, 1.0f, 1.0f}, const ColorRGBA& tint = ColorRGBA{});
@@ -56,6 +63,14 @@ namespace balcony::renderer
         Microsoft::WRL::ComPtr<ID3D12PipelineState> _pipelineState;
         DescriptorHeap _srvHeap;
         uint32_t _nextSrvIndex = 0;
+
+        // Generous headroom over what a single desktop session actually
+        // needs (desktop icons + taskbar buttons + clocks, each holding
+        // one slot for the lifetime of the Texture that owns it, reused
+        // in place on update -- see RegisterTexture). Sized as a class
+        // constant, not a local in Initialize(), so RegisterTexture can
+        // bounds-check against it.
+        static constexpr uint32_t kSrvCapacity = 4096;
 
         static constexpr uint32_t MaxQuadsPerFrame = 4096;
         struct FrameBuffer

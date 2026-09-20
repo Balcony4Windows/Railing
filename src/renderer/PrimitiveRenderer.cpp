@@ -150,7 +150,6 @@ float4 PSMain(PSInput input) : SV_TARGET
 
         ThrowIfFailed(d3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&_pipelineState)));
 
-        constexpr uint32_t kSrvCapacity = 256;
         _srvHeap.Create(d3dDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kSrvCapacity, true);
 
         const UINT vertexBufferSize = MaxQuadsPerFrame * 6 * sizeof(Vertex);
@@ -181,9 +180,20 @@ float4 PSMain(PSInput input) : SV_TARGET
         }
     }
 
-    uint32_t PrimitiveRenderer::RegisterTexture(GraphicsDevice& device, ID3D12Resource* resource)
+    uint32_t PrimitiveRenderer::RegisterTexture(GraphicsDevice& device, ID3D12Resource* resource, uint32_t existingIndex)
     {
-        const uint32_t index = _nextSrvIndex++;
+        uint32_t index = existingIndex;
+        if (index == UINT32_MAX)
+        {
+            // Never hand out (or write to) a slot past the heap's actual
+            // backing storage -- doing so doesn't fail visibly, it
+            // silently corrupts whatever the process heap put next to it.
+            // Clamping to the last valid slot means the newest texture
+            // past capacity draws wrong instead of crashing the process;
+            // kSrvCapacity has enough headroom that this should never
+            // actually trigger in normal use.
+            index = (_nextSrvIndex < kSrvCapacity) ? _nextSrvIndex++ : (kSrvCapacity - 1);
+        }
 
         const D3D12_RESOURCE_DESC desc = resource->GetDesc();
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};

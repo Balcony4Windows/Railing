@@ -18,6 +18,13 @@ namespace balcony::core
     {
         uint64_t id = 0;
         std::wstring title;
+
+        // The owning process's executable path, for matching a taskbar
+        // pin (identified by path) against a running window. Empty if
+        // it couldn't be queried -- e.g. an elevated process this
+        // (unelevated) DE can't inspect; callers must treat empty as
+        // "can't match a pin," not an error.
+        std::wstring path;
     };
 
     // Excludes `selfId` (Balcony's own window) so the taskbar never

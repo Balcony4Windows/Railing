@@ -1,11 +1,15 @@
 #include "balcony/components/DesktopEnvironment.h"
 
 #include "balcony/core/LuaBindings.h"
+#include "balcony/persistence/LuaBindings.h"
 #include "balcony/renderer/Renderer.h"
 #include "balcony/ui/LuaBindings.h"
 #include "balcony/windows/WindowsIntegration.h"
 
+#include <Windows.h>
+
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <vector>
 
@@ -26,6 +30,11 @@ namespace balcony::components
         _lua.Initialize();
         balcony::ui::RegisterLuaBindings(_lua.State(), renderer);
         balcony::core::RegisterLuaBindings(_lua.State(), _systemMonitors, reinterpret_cast<uint64_t>(window.Handle()));
+
+        // Must happen before any script runs below: desktop.lua reads
+        // persisted icon positions synchronously while building icons.
+        _stateStore.Load();
+        balcony::persistence::RegisterLuaBindings(_lua.State(), _stateStore);
 
         const float screenWidth = static_cast<float>(window.Width());
         const float screenHeight = static_cast<float>(window.Height());
@@ -123,6 +132,13 @@ namespace balcony::components
 
     void DesktopEnvironment::HandleRightClick(int x, int y)
     {
+        if (_drag.dragging)
+        {
+            // Defensive: a genuine simultaneous left-drag + right-click
+            // isn't a designed interaction.
+            return;
+        }
+
         const float fx = static_cast<float>(x);
         const float fy = static_cast<float>(y);
 
@@ -147,6 +163,25 @@ namespace balcony::components
 
     void DesktopEnvironment::HandleLeftClick(int x, int y)
     {
+        // Snapshot and clear drag state up front, whether or not a drag
+        // was actually happening: this is also where WM_LBUTTONUP's
+        // ordinary (non-dragging) case must leave _drag clean.
+        const bool wasDragging = _drag.dragging;
+        balcony::ui::Component* dragTarget = _drag.target;
+        _drag = DragState{};
+
+        if (wasDragging)
+        {
+            // A real drag just ended -- persist via the component's own
+            // callback and suppress the ordinary click dispatch below.
+            // Dragging an icon must not also launch it.
+            if (dragTarget)
+            {
+                dragTarget->DragEnd();
+            }
+            return;
+        }
+
         const float fx = static_cast<float>(x);
         const float fy = static_cast<float>(y);
 
@@ -173,5 +208,74 @@ namespace balcony::components
         {
             hit->Click();
         }
+    }
+
+    void DesktopEnvironment::HandleLeftButtonDown(int x, int y)
+    {
+        if (_activeMenu && _activeMenu->IsVisible())
+        {
+            // Never start a drag from inside an open context menu.
+            return;
+        }
+
+        const float fx = static_cast<float>(x);
+        const float fy = static_cast<float>(y);
+
+        balcony::ui::Component* hit = _taskbar.FindDraggable(fx, fy);
+        if (!hit)
+        {
+            hit = _desktop.FindDraggable(fx, fy);
+        }
+        if (!hit)
+        {
+            return;
+        }
+
+        _drag = DragState{};
+        _drag.target = hit;
+        _drag.startX = _drag.lastX = fx;
+        _drag.startY = _drag.lastY = fy;
+    }
+
+    void DesktopEnvironment::HandleMouseMove(int x, int y)
+    {
+        if (!_drag.target)
+        {
+            return;
+        }
+
+        const float fx = static_cast<float>(x);
+        const float fy = static_cast<float>(y);
+
+        if (!_drag.dragging)
+        {
+            // Windows' own click-vs-drag threshold, not a made-up
+            // constant -- keeps this consistent with every other
+            // Windows app.
+            if (std::abs(fx - _drag.startX) < static_cast<float>(GetSystemMetrics(SM_CXDRAG)) &&
+                std::abs(fy - _drag.startY) < static_cast<float>(GetSystemMetrics(SM_CYDRAG)))
+            {
+                return;
+            }
+            _drag.dragging = true;
+        }
+
+        _drag.target->Translate(fx - _drag.lastX, fy - _drag.lastY);
+        _drag.lastX = fx;
+        _drag.lastY = fy;
+    }
+
+    void DesktopEnvironment::HandleCaptureLost()
+    {
+        // Capture was stolen mid-drag before a WM_LBUTTONUP arrived
+        // (e.g. alt-tab) -- finalize at the current, already-translated
+        // position rather than silently discarding the move. A no-op in
+        // the ordinary case, where HandleLeftClick already cleared
+        // _drag just before releasing capture itself.
+        if (_drag.dragging && _drag.target)
+        {
+            _drag.target->DragEnd();
+        }
+        _drag = DragState{};
     }
 }

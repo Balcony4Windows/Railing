@@ -27,6 +27,17 @@ namespace balcony::ui
         // targets, ...) rather than loaded from a file.
         void SetTexture(const balcony::renderer::Texture& texture);
 
+        // Uploads raw RGBA8 pixels directly into this Image's own
+        // texture, reusing its existing GPU descriptor slot if it already
+        // has one -- unlike building a separate Texture and handing it to
+        // SetTexture(), which always leaves the old slot (if any) behind
+        // unreclaimed. What Image::SetSystemIcon/SetWindowIcon use.
+        // Bounds default to the pixel buffer's own size the first time
+        // this is called.
+        void SetPixels(balcony::renderer::GraphicsDevice& device, balcony::renderer::CommandQueue& queue,
+                        balcony::renderer::PrimitiveRenderer& renderer,
+                        uint32_t width, uint32_t height, const uint8_t* rgba8);
+
         void SetOpacity(float opacity) { _opacity = opacity; }
 
         void Draw(balcony::renderer::PrimitiveRenderer& renderer) const override;

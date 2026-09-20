@@ -82,6 +82,7 @@ namespace balcony::core
                 sol::table entry = luaState.create_table();
                 entry["id"] = info.id;
                 entry["title"] = WideToUtf8(info.title);
+                entry["path"] = WideToUtf8(info.path);
                 result[index++] = entry;
             }
             return result;
